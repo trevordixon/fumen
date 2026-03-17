@@ -1,5 +1,7 @@
 import "@babel/polyfill";
 import * as fonts from "./fonts";
+import * as petalumaFonts from "./fonts_petaluma";
+import * as petalumaTextFonts from "./petaluma_text_fonts";
 
 var G_memCanvasStore = {}; // refered by ratio&zoom
 //var G_memCanvas = null;
@@ -166,6 +168,7 @@ export function canvasbBzierCurve(canvas, points, close=false, fill=false, opt=n
     let orgValues = {};
     if (opt != null) {
         for (let key in opt) {
+            if (key === "font" || key === "raw") continue;
             orgValues[key] = context[key];
             context[key] = opt[key];
         }
@@ -230,31 +233,65 @@ export function canvasPath(canvas, svgpathdata, fill=false, opt) {
 }
 
 // confs as array
-export function fontDescSingle(fsize,conf){ //fontfamily,bold) {
+export function fontDescSingle(fsize,conf,textSizeScale=1.0){ //fontfamily,bold) {
     let sc = "";
     if(conf && conf["font-weight"])  sc += (conf["font-weight"]+" ");
     if(conf && conf["font-style"])   sc += (conf["font-style"]+ " ");
     if(conf && conf["font-variant"]) sc += (conf["font-variant"]+ " ");
-    sc += (fsize+ "px ");
+    sc += ((fsize * textSizeScale)+ "px ");
     sc += ((conf && conf["font-family"])||"'Arial'"); // not the original config shoud have quotation mark if it means concrete font name. For generic name, quoation is not needed.
     return sc;
 }
 
-// confs as array
-export function fontDesc(fsize,confs){ //fontfamily,bold) {
-    //return  (bold?"bold ":"")+fsize + "px '" + (fontfamily?fontfamily:"Arial") + "'";
-    let s = "";
-    if(!confs) return fsize+ "px "+"'Arial'"; // Use default settings
-    confs.forEach((conf,i)=>{
-        let sc = fontDescSingle(fsize, conf);
-        s += sc;
-        if(i < confs.length-1) s += ",";
-    });
-    return s;
+function normalizeTextRenderConfig(config){
+    return {
+        defaultTextFontConfs: (config && "defaultTextFontConfs" in config) ? config.defaultTextFontConfs : G_defaultTextFontConfs,
+        defaultTextSizeScale: (config && typeof config.defaultTextSizeScale === "number" && config.defaultTextSizeScale > 0)
+            ? config.defaultTextSizeScale
+            : G_defaultTextSizeScale
+    };
 }
 
-export function getCharProfile(fsize,confs,ratio,zoom) {
-    let font = fontDesc(fsize,confs);
+const CANVAS_TEXT_RENDER_CONFIG_PROP = "__fumenTextRenderConfig";
+
+export function setCanvasTextRenderConfig(canvas, config){
+    if(!canvas) return;
+    canvas[CANVAS_TEXT_RENDER_CONFIG_PROP] = normalizeTextRenderConfig(config);
+}
+
+function getEffectiveTextRenderConfig(canvas, opt){
+    if(opt && opt.text_render_config){
+        return normalizeTextRenderConfig(opt.text_render_config);
+    }
+    if(canvas && canvas[CANVAS_TEXT_RENDER_CONFIG_PROP]){
+        return normalizeTextRenderConfig(canvas[CANVAS_TEXT_RENDER_CONFIG_PROP]);
+    }
+    return normalizeTextRenderConfig(null);
+}
+
+// confs as array
+export function fontDesc(fsize,confs,textRenderConfig){ //fontfamily,bold) {
+    const config = normalizeTextRenderConfig(textRenderConfig);
+    if(!confs) confs = config.defaultTextFontConfs;
+    if(!confs || confs.length === 0) return fontDescSingle(fsize, {"font-family":"'Arial'"}, config.defaultTextSizeScale); // Use default settings
+
+    // Canvas 2D expects one CSS font shorthand string.
+    // Build one descriptor using first non-empty style/weight/variant and a fallback family list.
+    let merged = {};
+    let families = [];
+    confs.forEach((conf)=>{
+        if(!conf) return;
+        if(!merged["font-weight"] && conf["font-weight"]) merged["font-weight"] = conf["font-weight"];
+        if(!merged["font-style"] && conf["font-style"]) merged["font-style"] = conf["font-style"];
+        if(!merged["font-variant"] && conf["font-variant"]) merged["font-variant"] = conf["font-variant"];
+        if(conf["font-family"]) families.push(conf["font-family"]);
+    });
+    merged["font-family"] = families.length > 0 ? families.join(",") : "'Arial'";
+    return fontDescSingle(fsize, merged, config.defaultTextSizeScale);
+}
+
+export function getCharProfile(fsize,confs,ratio,zoom,textRenderConfig) {
+    let font = fontDesc(fsize,confs,textRenderConfig);
     let refstr = font+"/"+ratio+"/"+zoom;
 
     let yroom = null;
@@ -276,6 +313,7 @@ export function getCharProfile(fsize,confs,ratio,zoom) {
 
 export function canvasText(canvas, x, y, text, fsize, align, xwidth, notdraw, opt) {
     var context = canvas.getContext("2d");
+    const textRenderConfig = getEffectiveTextRenderConfig(canvas, opt);
     var ta = {
         l: "left",
         c: "center",
@@ -289,7 +327,7 @@ export function canvasText(canvas, x, y, text, fsize, align, xwidth, notdraw, op
         d: "top" // default
     };
     var orgfont = context.font;
-    let font = fontDesc(fsize, opt && opt.font); //opt?opt.fontfamily:null,opt?opt.bold:null);
+    let font = fontDesc(fsize, opt && opt.font, textRenderConfig); //opt?opt.fontfamily:null,opt?opt.bold:null);
 
     let yadjust = 0;
     let yroom = null;
@@ -302,7 +340,7 @@ export function canvasText(canvas, x, y, text, fsize, align, xwidth, notdraw, op
         context.textBaseline = tb[align[1]]; //tb[align[1]];
     
     }else{
-        yroom = getCharProfile(fsize, opt && opt.font, canvas.ratio,canvas.zoom);
+        yroom = getCharProfile(fsize, opt && opt.font, canvas.ratio,canvas.zoom, textRenderConfig);
 
 
         if (align[1] == "t") {
@@ -322,17 +360,19 @@ export function canvasText(canvas, x, y, text, fsize, align, xwidth, notdraw, op
     let orgValues = {};
     if (opt != null) {
         for (let key in opt) {
+            if (key === "font" || key === "raw" || key === "text_render_config") continue;
             orgValues[key] = context[key];
             context[key] = opt[key];
         }
     }
 
+    let effectiveXWidth = (xwidth != null) ? xwidth * textRenderConfig.defaultTextSizeScale : xwidth;
     if (notdraw != true){
-        if(xwidth != null) context.fillText(text, x, y + yadjust, xwidth);
-        else context.fillText(text, x, y + yadjust); // Nothing drawn if "undefined" is passed for 4th argument. 
+        if(effectiveXWidth != null) context.fillText(text, x, y + yadjust, effectiveXWidth);
+        else context.fillText(text, x, y + yadjust); // Nothing drawn if "undefined" is passed for 4th argument.
     }
     var width = context.measureText(text).width;
-    if (xwidth != null) width = Math.min(xwidth, width);
+    if (effectiveXWidth != null) width = Math.min(effectiveXWidth, width);
 
     // eslint-disable-next-line no-constant-condition
     if (false) {
@@ -345,6 +385,7 @@ export function canvasText(canvas, x, y, text, fsize, align, xwidth, notdraw, op
 
     if (opt != null) {
         for (let key in orgValues) {
+            if (key === "font" || key === "raw" || key === "text_render_config") continue;
             context[key] = orgValues[key];
         }
     }
@@ -352,6 +393,9 @@ export function canvasText(canvas, x, y, text, fsize, align, xwidth, notdraw, op
 
     // TODO : For backward compatibility, width is kept as is. Remove in the later.
     let xadjust = {"left":0, "center":-width/2, "right":-width}[ta[align[0]]];
+    if(!yroom){
+        yroom = getCharProfile(fsize, opt && opt.font, canvas.ratio,canvas.zoom, textRenderConfig);
+    }
     var ret = { width: width, bb:new BoundingBox(x + xadjust, y + yadjust, width, yroom.height) };
     Object.assign(ret, yroom);
     return ret;
@@ -454,6 +498,35 @@ export function svgArcBezie(point_array)
 // Text rendering 
 
 var G_y_char_offsets = {};
+var G_defaultTextFontConfs = null;
+var G_defaultTextSizeScale = 1.0;
+
+export function setDefaultTextFontConfs(confs){
+    G_defaultTextFontConfs = confs;
+}
+
+export function setDefaultTextSizeScale(scale){
+    G_defaultTextSizeScale = (typeof scale === "number" && scale > 0) ? scale : 1.0;
+}
+
+export function getDefaultTextRenderConfig(){
+    return {
+        defaultTextFontConfs: G_defaultTextFontConfs,
+        defaultTextSizeScale: G_defaultTextSizeScale
+    };
+}
+
+export function setDefaultTextRenderConfig(config){
+    if(config && "defaultTextFontConfs" in config){
+        G_defaultTextFontConfs = config.defaultTextFontConfs;
+    }
+    if(config && "defaultTextSizeScale" in config){
+        G_defaultTextSizeScale =
+            (typeof config.defaultTextSizeScale === "number" && config.defaultTextSizeScale > 0)
+                ? config.defaultTextSizeScale
+                : 1.0;
+    }
+}
 
 
 export function getPixelRatio(canvas) {
@@ -639,6 +712,105 @@ export function releaseCanvas(canvas){
 }
 
 export var G_imgmap = {};
+export const REQUIRED_MUSIC_GLYPHS = Object.keys(fonts.fontData);
+const BUILTIN_MUSIC_FONT_KEY = "bravura";
+const BUILTIN_MUSIC_FONT_KEY_PETALUMA = "petaluma";
+const G_musicFontPromiseStore = {};
+const G_musicFontImageMapStore = {};
+const G_customFontIdStore = new WeakMap();
+let G_customFontIdCounter = 0;
+let G_petalumaTextFontsPromise = null;
+
+function getCustomFontId(fontData){
+    if(!G_customFontIdStore.has(fontData)){
+        G_customFontIdCounter += 1;
+        G_customFontIdStore.set(fontData, "custom-" + G_customFontIdCounter);
+    }
+    return G_customFontIdStore.get(fontData);
+}
+
+function validateMusicFontData(fontData, where){
+    if(!fontData || typeof fontData !== "object"){
+        throw new Error(where + " must be an object.");
+    }
+
+    const missingGlyphs = REQUIRED_MUSIC_GLYPHS.filter((glyphname)=>!(glyphname in fontData));
+    if(missingGlyphs.length > 0){
+        throw new Error(where + " is missing required glyphs: " + missingGlyphs.join(", "));
+    }
+
+    REQUIRED_MUSIC_GLYPHS.forEach((glyphname)=>{
+        const glyph = fontData[glyphname];
+        if(!glyph || typeof glyph !== "object" || typeof glyph.dataURL !== "string"){
+            throw new Error(where + "." + glyphname + ".dataURL must be a string.");
+        }
+    });
+}
+
+function normalizeMusicFontRequest(request){
+    if(!request || request.type === "bravura"){
+        return {
+            fontKey: BUILTIN_MUSIC_FONT_KEY,
+            fontData: fonts.fontData
+        };
+    }
+
+    if(request.type === "petaluma"){
+        return {
+            fontKey: BUILTIN_MUSIC_FONT_KEY_PETALUMA,
+            fontData: petalumaFonts.fontDataPetaluma
+        };
+    }
+
+    if(request.type !== "custom"){
+        throw new Error("Invalid music font type: " + request.type);
+    }
+
+    validateMusicFontData(request.music_font_data, "music_font_data");
+
+    const customId = request.fontKey || getCustomFontId(request.music_font_data);
+    return {
+        fontKey: customId,
+        fontData: request.music_font_data
+    };
+}
+
+export function getMusicGlyph(music_font, glyphname){
+    const activeFont =
+        (music_font && music_font.glyphMap) ||
+        (music_font && music_font.fontKey && G_musicFontImageMapStore[music_font.fontKey]) ||
+        G_imgmap;
+    const glyph = activeFont[glyphname];
+    if(!glyph){
+        throw new Error("Missing loaded music glyph image: " + glyphname);
+    }
+    return glyph;
+}
+
+export function preloadPetalumaTextFonts(){
+    if(G_petalumaTextFontsPromise){
+        return G_petalumaTextFontsPromise;
+    }
+    if(typeof FontFace === "undefined" || typeof document === "undefined" || !document.fonts){
+        return Promise.resolve();
+    }
+
+    const faces = [
+        new FontFace("Petaluma Text", "url(" + petalumaTextFonts.PETALUMA_TEXT_WOFF2_DATAURL + ")"),
+        new FontFace("Petaluma Script", "url(" + petalumaTextFonts.PETALUMA_SCRIPT_WOFF2_DATAURL + ")")
+    ];
+
+    G_petalumaTextFontsPromise = Promise.all(faces.map((face)=>{
+        return face.load().then((loadedFace)=>{
+            document.fonts.add(loadedFace);
+            return loadedFace;
+        });
+    })).then(()=>{
+        return document.fonts.ready;
+    });
+
+    return G_petalumaTextFontsPromise;
+}
 
 export function preloadImages(imageurls) {
     var promises = [];
@@ -665,35 +837,46 @@ export function preloadImages(imageurls) {
     });
 }
 
-var embedFontPromise = null;
+export function PreloadJsonFont(request={type:"bravura"}) {
+    const normalized = normalizeMusicFontRequest(request);
+    const fontKey = normalized.fontKey;
 
-export function PreloadJsonFont() {
-
-    if(embedFontPromise){
-        // To eliminate multiple loads
-        return embedFontPromise;
+    if(G_musicFontPromiseStore[fontKey]){
+        return G_musicFontPromiseStore[fontKey];
     }
 
-    let promises = [];
-    for(let glyphname in fonts.fontData){
+    const promises = [];
+    for(let glyphname in normalized.fontData){
         let p = new Promise((resolve,reject)=>{
             let img = new Image();
-            img.src = fonts.fontData[glyphname].dataURL;
+            img.src = normalized.fontData[glyphname].dataURL;
             img.onload = function() {
-                resolve({ img: img, url: glyphname });
+                resolve({ img: img, glyphname: glyphname });
+            };
+            img.onerror = function() {
+                reject(new Error("Failed to load music glyph: " + glyphname));
             };
         });
         promises.push(p);
     }
-    
-    embedFontPromise = Promise.all(promises)
-    .then((result)=>{
-        // make map with url
-        for (var ii = 0; ii < result.length; ++ii) {
-            G_imgmap[result[ii].url] = result[ii].img;
+
+    G_musicFontPromiseStore[fontKey] = Promise.all(promises).then((result)=>{
+        const glyphMap = {};
+        for (let ii = 0; ii < result.length; ++ii) {
+            glyphMap[result[ii].glyphname] = result[ii].img;
         }
-        return result;
+
+        G_musicFontImageMapStore[fontKey] = glyphMap;
+        if(fontKey === BUILTIN_MUSIC_FONT_KEY){
+            // Keep legacy map populated for backward compatibility.
+            Object.assign(G_imgmap, glyphMap);
+        }
+
+        return {
+            fontKey: fontKey,
+            glyphMap: glyphMap
+        };
     });
 
-    return embedFontPromise;
+    return G_musicFontPromiseStore[fontKey];
 }

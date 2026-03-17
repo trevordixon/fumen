@@ -1,6 +1,9 @@
 Copyright © 2015, Steinberg Media Technologies GmbH (http://www.steinberg.net/),
 with Reserved Font Name "Bravura".
 
+Copyright © 2018, Steinberg Media Technologies GmbH (http://www.steinberg.net/),
+with Reserved Font Name "Petaluma".
+
 Copyright © 2020, Hiroyuki Baba (hiroyuki.baba.jp@gmail.com),
 with Reserved Font Name "Fumen".
 

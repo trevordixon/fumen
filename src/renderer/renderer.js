@@ -13,6 +13,10 @@ export class Renderer {
         return this.hitManager.get(paper, coord);
     }
 
+    getMusicGlyph(glyphname){
+        return graphic.getMusicGlyph(this.music_font, glyphname);
+    }
+
 	getBoundarySign(e) {
         if (e === null) return "n";
         return e.typestr;
@@ -597,6 +601,12 @@ export class Renderer {
 
             balken_element.renderprop.note_x_center = note_x_center;
 
+            const rhythmProfile = (this.music_font_profile && this.music_font_profile.rhythm) || {};
+            const noteAccidentalYOffset = rhythmProfile.noteAccidentalYOffset || { 11: -0.5, 1: 0, 0: 0 };
+            const noteAccidentalHeightScale = rhythmProfile.noteAccidentalHeightScale || 2.5;
+            const ledgerLeftOffset = rhythmProfile.ledgerLineLeftOffset || -3;
+            const ledgerRightOffset = rhythmProfile.ledgerLineRightOffset || 12;
+
             for (let ci = 0; ci < ys.length; ++ci) {
 
                 var y = ys[ci];
@@ -605,16 +615,16 @@ export class Renderer {
                 // eslint-disable-next-line no-empty
                 if (d == "0") {
                 } else if (d == "1") {
-                    r = graphic.canvasImage(paper, graphic.G_imgmap["uniE0A2"], //w1note
+                    r = graphic.canvasImage(paper, this.getMusicGlyph("uniE0A2"), //w1note
                         note_x_center, y, null, _5lines_intv, "lm", draw);
                     
                 } else if (d == "2") {
 
-                    r = graphic.canvasImage(paper, graphic.G_imgmap["uniE0A3"], //w2note
+                    r = graphic.canvasImage(paper, this.getMusicGlyph("uniE0A3"), //w2note
                     note_x_center, y, null, _5lines_intv, "lm", draw);
                 } else {
 
-                    r = graphic.canvasImage(paper, graphic.G_imgmap["uniE0A4"], // bnote
+                    r = graphic.canvasImage(paper, this.getMusicGlyph("uniE0A4"), // bnote
                     note_x_center, y, null, _5lines_intv, "lm", draw);
                 }
 
@@ -654,11 +664,11 @@ export class Renderer {
                 if (sharp_flats[ci] !== null) {
 
                     let svgname = { 11: "uni266D", 1: "uni266F", 0: "uni266E" };
-                    let svg_dy = { 11: -0.5, 1: 0, 0: 0 };
+                    let svg_dy = noteAccidentalYOffset;
                     let url = svgname[sharp_flats[ci]];
                     let dy = svg_dy[sharp_flats[ci]];
-                    r = graphic.canvasImage(paper, graphic.G_imgmap[url],
-                        x, y + _5lines_intv*dy, null, _5lines_intv*2.5, "lm", draw);
+                    r = graphic.canvasImage(paper, this.getMusicGlyph(url),
+                        x, y + _5lines_intv*dy, null, _5lines_intv*noteAccidentalHeightScale, "lm", draw);
                     
                     bounding_box.add_BB(r.bb);
                 }
@@ -670,9 +680,9 @@ export class Renderer {
 
 
                     graphic.canvasLine(paper,
-                        note_x_center - 3,
+                        note_x_center + ledgerLeftOffset,
                         rs_y_base + a5y,
-                        note_x_center + 12,
+                        note_x_center + ledgerRightOffset,
                         rs_y_base + a5y,
                         {width:1}, draw);
                 }
@@ -681,9 +691,9 @@ export class Renderer {
                     let a5y = (_5lines_intv / 2) * (8 - p5i); // rs_y_base corresponds to pos#3
 
                     graphic.canvasLine(paper,
-                        note_x_center - 3,
+                        note_x_center + ledgerLeftOffset,
                         rs_y_base + a5y,
-                        note_x_center + 12,
+                        note_x_center + ledgerRightOffset,
                         rs_y_base + a5y,
                         {width:1}, draw);
                 }
@@ -1280,8 +1290,11 @@ export class Renderer {
         // 32 and uppper will have longer bars of which delta is corresponding to (Num flags - 2)
         if(numflag >= 1){
             let x_adj = -0.5; // subpixel adjustment
-            let barlen_delta = Math.max(0, (numflag-2) * 5); // "5" is magic number adjusted for this paticular font
-            let flag_w = _5lines_intv * 1.1; // Normalize by width. Unfortunately, it is not easy to normalize with height as the rule is not clear. "1.1" is magic number.
+            const rhythmProfile = (this.music_font_profile && this.music_font_profile.rhythm) || {};
+            const flagBarLengthDeltaStep = rhythmProfile.flagBarLengthDeltaStep || 5;
+            const flagWidthScale = rhythmProfile.flagWidthScale || 1.1;
+            let barlen_delta = Math.max(0, (numflag-2) * flagBarLengthDeltaStep);
+            let flag_w = _5lines_intv * flagWidthScale;
             let url = "flag_"+(upper_flag?"f":"i")+numflag; // for now numflags <= 4
 
             let ys = elements[0].balken_element.notes_coord.y;
@@ -1295,7 +1308,7 @@ export class Renderer {
                 : Math.max.apply(null, ys) + param.note_bar_length + barlen_delta;
 
             paper.getContext("2d").scale(this_elem_draw_scale, 1.0);
-            let r = graphic.canvasImage(paper, graphic.G_imgmap[url],
+            let r = graphic.canvasImage(paper, this.getMusicGlyph(url),
                 (bar_x + x_adj)/this_elem_draw_scale,
                 y1,
                 flag_w,  // No need to apply "/this_elem_draw_scale" otherwise no compression apply :).

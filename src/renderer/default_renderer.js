@@ -8,6 +8,7 @@ import { Renderer } from "./renderer";
 import * as common from "../common/common";
 import * as graphic from "./graphic";
 import * as presets from "./presets";
+import { getMusicFontProfile } from "./music_font_profiles";
 
 /**
  * @typedef RenderParam
@@ -17,6 +18,7 @@ import * as presets from "./presets";
  * @property {Number} [paper_height=667] Height of the paper. If 0 is specified, the paper height is fit to its contents.
  * @property {float} [text_size=1.0] Text size as a ratio to default size. 0.9 means 10% smaller than default size.
  * @property {int} [base_font_size] Font size of the chord symbols.
+ * @property {float} [chord_font_scale=1.0] Additional multiplier for chord symbol sizing. Applied with base_font_size for all music fonts.
  * @property {int} [title_font_size] Title font size
  * @property {int} [artist_font_size] Artist font size
  * @property {int} [x_offset] Margin of the left and right side of the paper.
@@ -30,6 +32,10 @@ import * as presets from "./presets";
  * @property {int} [y_subtitle_offset] Top offset for sub-title
  * @property {int} [y_artist_offset] Top offset for artist row
  * @property {int} [y_footer_offset] Bottom offset for footer
+ * @property {String} [music_font="bravura"] Music font selector. "bravura" and "petaluma" are built-in options, and "custom" uses music_font_data.
+ * @property {Object} [music_font_data] Custom music glyph set keyed by glyph names (e.g. "uniE0A2"), each with at least dataURL.
+ * @property {String} [minor_chord_style="minus"] Minor triad marker style: "minus" renders `-`, "m" renders lowercase `m`.
+ * @property {int} [section_margin_top=0] Extra vertical space before rows that start a rehearsal group (section).
  */
 var SR_RENDER_PARAM = {
     // Paper setting
@@ -59,6 +65,12 @@ var SR_RENDER_PARAM = {
     subtitle_font_size      : 12,
     artist_font_size        : 14, // 
     base_font_size          : 28, // Chord symbol font size
+    chord_font_scale        : 1.0, // Additional chord-only scaling
+    music_font              : "bravura", // bravura | petaluma | custom
+    music_font_data         : null, // Used only when music_font is custom
+    subtitle_font           : null,
+    artist_font             : null,
+    annotation_font         : null,
     
     // Font configs. Please refer to CSS font configs for the meaning of each variable. http://www.htmq.com/style/font.shtml .
     // Font size config is done separately above. Gives as array with priority order.  
@@ -76,6 +88,7 @@ var SR_RENDER_PARAM = {
     row_height          : 28, // Basic height of the measure when no rs, mu and ml area is drawn
     base_body_height    : 28, // Height in body area (not applicable for RS area) used for simile and rest rendering. Recommended to keep this value irrespective of row_height.
     row_margin          : 4, // Margin between next y_base and lower edge of Measure Lower Area
+    section_margin_top  : 0, // Additional gap before section-start rows (rows with rehearsal mark)
     rs_area_height      : 24, // Rhythm Slashes Area // 
     rm_area_height      : 15, // Rehearsal Mark Area
     mu_area_height      : 15, // Measure Upper Area ( Repeat signs area )
@@ -102,6 +115,7 @@ var SR_RENDER_PARAM = {
     // Chord settings
     on_bass_style           : "right", // right|below
     on_bass_below_y_offset  : 0,
+    minor_chord_style       : "minus", // minus|m
     
     // Rhythm Shalsh / Notes rendering settings
     balken_width            : 3,
@@ -169,6 +183,11 @@ export class DefaultRenderer extends Renderer {
             pageidx: 0,
             current_canvas: null
         };
+        this.music_font = null;
+        this.text_render_config = {
+            defaultTextFontConfs: null,
+            defaultTextSizeScale: 1.0
+        };
     }
 
     setoffsetparam(param){
@@ -178,6 +197,58 @@ export class DefaultRenderer extends Renderer {
         if("x_offset" in param) param.x_offset_right  =  param.x_offset_right  || param.x_offset;
     }
 
+    getRenderParamForRun(param){
+        let merged = common.deepcopy(this.init_param);
+        this.mergeParam(merged, param, false);
+        return merged;
+    }
+
+    getMusicFontRequest(param){
+        if(param.music_font === "custom"){
+            return {
+                type: "custom",
+                music_font_data: param.music_font_data
+            };
+        }
+        if(param.music_font === "petaluma"){
+            return { type: "petaluma" };
+        }
+        return { type: "bravura" };
+    }
+
+    applyTextProfile(runtimeParam, userParam){
+        const textProfile = this.music_font_profile.text;
+        if(textProfile.paramOverrides){
+            Object.keys(textProfile.paramOverrides).forEach((key)=>{
+                if(!(key in userParam)){
+                    runtimeParam[key] = textProfile.paramOverrides[key];
+                }
+            });
+        }
+        this.text_render_config = {
+            defaultTextFontConfs: textProfile.defaultTextFontConfs || null,
+            defaultTextSizeScale:
+                (typeof textProfile.defaultTextSizeScale === "number" && textProfile.defaultTextSizeScale > 0)
+                    ? textProfile.defaultTextSizeScale
+                    : 1.0
+        };
+        if(textProfile.titleFont && !("title_font" in userParam)){
+            runtimeParam.title_font = common.deepcopy(textProfile.titleFont);
+        }
+        if(textProfile.subtitleFont && !("subtitle_font" in userParam)){
+            runtimeParam.subtitle_font = common.deepcopy(textProfile.subtitleFont);
+        }
+        if(textProfile.artistFont && !("artist_font" in userParam)){
+            runtimeParam.artist_font = common.deepcopy(textProfile.artistFont);
+        }
+        if(textProfile.annotationFont && !("annotation_font" in userParam)){
+            runtimeParam.annotation_font = common.deepcopy(textProfile.annotationFont);
+        }
+        if(textProfile.repeatMarkFont && !("repeat_mark_font" in userParam)){
+            runtimeParam.repeat_mark_font = common.deepcopy(textProfile.repeatMarkFont);
+        }
+    }
+
     /**
      * Render the track
      * @param {Track} track - Track object passed from Parser.parse function 
@@ -185,10 +256,21 @@ export class DefaultRenderer extends Renderer {
      */
     render(track, param={}) {
         this.track = track;
+        const runtimeParam = this.getRenderParamForRun(param);
+        const musicFontRequest = this.getMusicFontRequest(runtimeParam);
+        this.music_font_profile = getMusicFontProfile(musicFontRequest.type);
+        this.applyTextProfile(runtimeParam, param);
 
-        return graphic.PreloadJsonFont()
-        .then(()=>{
-            return this.renderImpl(track,param);
+        const preloadTasks = [graphic.PreloadJsonFont(musicFontRequest)];
+        if(musicFontRequest.type === "petaluma"){
+            preloadTasks.push(graphic.preloadPetalumaTextFonts());
+        }
+
+        return Promise.all(preloadTasks)
+        .then((results)=>{
+            const music_font = results[0];
+            this.music_font = music_font;
+            return this.renderImpl(track, runtimeParam);
         });
     }
 
@@ -817,7 +899,7 @@ export class DefaultRenderer extends Renderer {
                 track.getVariable("SUB_TITLE"),
                 param.subtitle_font_size,
                 "ct",
-                null, stage==1
+                null, stage==1, {font:param.subtitle_font}
             );
 
             max_header_height = Math.max(max_header_height, param.y_subtitle_offset + ri.height);
@@ -834,7 +916,7 @@ export class DefaultRenderer extends Renderer {
                 track.getVariable("ARTIST"),
                 param.artist_font_size,
                 "rt",
-                null, stage==1
+                null, stage==1, {font:param.artist_font}
             );
 
             max_header_height = Math.max(max_header_height, param.y_artist_offset + ri.height);
@@ -997,7 +1079,7 @@ export class DefaultRenderer extends Renderer {
             }
 
             let prev_measures = i > 0 ? meas_row_list[i-1].meas_row : null;
-            let prev_measure = prev_measures ? prev_measures[prev_measures.legnth-1] : null;
+            let prev_measure = prev_measures ? prev_measures[prev_measures.length-1] : null;
 
             let next_measures = i < meas_row_list.length-1 ? meas_row_list[i+1].meas_row : null;
             let next_measure = next_measures ? next_measures[0] : null;
@@ -1046,6 +1128,7 @@ export class DefaultRenderer extends Renderer {
                 param.text_size
             );
         }
+        graphic.setCanvasTextRenderConfig(this.memCanvas, this.text_render_config);
 
         let yse = y_stacks;
 
@@ -1100,7 +1183,9 @@ export class DefaultRenderer extends Renderer {
            var yprof = this.screeningYAreas(
                row_elements_list, 0, yse[pei].param, 
                yse[pei].cont[0].getVariable("SHOW_STAFF"), 
-               yse[pei].cont[0].getVariable("REHARSAL_MARK_POSITION")=="Inner");
+               yse[pei].cont[0].getVariable("REHARSAL_MARK_POSITION")=="Inner",
+               yse[pei].pm,
+               false);
             
             // yprof.end.y means the row total height
             y_base_screening += yprof.end.y;
@@ -1162,6 +1247,7 @@ export class DefaultRenderer extends Renderer {
                 param.pixel_ratio,
                 param.text_size
             );
+            graphic.setCanvasTextRenderConfig(canvas, this.text_render_config);
 
             if(param.background_color)
                 graphic.canvasRect(canvas, 0, 0, 
@@ -1184,6 +1270,7 @@ export class DefaultRenderer extends Renderer {
                 param.text_size,
                 true
             );
+            graphic.setCanvasTextRenderConfig(this.context.current_canvas, this.text_render_config);
 
             this.hitManager.setGlobalScale(param.text_size, param.text_size);
         }
@@ -1218,6 +1305,8 @@ export class DefaultRenderer extends Renderer {
                     ? page_origin.y + page_height - yse[pei].param.y_offset_bottom - (show_footer ? yse[pei].param.y_footer_offset : 0)
                     : null;
                 
+                const suppressSectionMargin =
+                    y_base <= page_origin.y + yse[pei].param.y_offset_top + 0.001;
                 let r = this.renderMeasureRow(
                     track,
                     page_origin.x + param.x_offset_left,
@@ -1229,7 +1318,8 @@ export class DefaultRenderer extends Renderer {
                     yse[pei].param,
                     yse[pei].cont[0].getVariable("REHARSAL_MARK_POSITION")=="Inner",
                     ylimit,
-                    music_context
+                    music_context,
+                    suppressSectionMargin
                 );
                 if (!r) {
                     // Paper height is too low and even single row is not fit in
@@ -1252,6 +1342,7 @@ export class DefaultRenderer extends Renderer {
                             param.pixel_ratio,
                             param.text_size
                         );
+                        graphic.setCanvasTextRenderConfig(this.context.current_canvas, this.text_render_config);
                         
                         if(param.background_color)
                             graphic.canvasRect(this.context.current_canvas, 0, 0, 
@@ -1318,7 +1409,7 @@ export class DefaultRenderer extends Renderer {
     }
 
     screeningYAreas(row_elements_list, y_base, param, show_staff, 
-        inner_reharsal_mark){
+        inner_reharsal_mark, prev_measure, suppress_section_margin=false){
 
         var ycomps = ["rm", "mu","body","rs","ml","irm","end"];
         var yprof = {
@@ -1405,6 +1496,11 @@ export class DefaultRenderer extends Renderer {
             }else{
                 yprof.rm.detected = true; // dedecated rehardsal mark region
             }
+        }
+
+        const sectionMarginTop = (typeof param.section_margin_top === "number") ? param.section_margin_top : 0;
+        if(rg_mark_detected && prev_measure != null && sectionMarginTop !== 0 && !suppress_section_margin){
+            y_base += sectionMarginTop;
         }
 
         // Calculate yposition  for each area
@@ -2001,7 +2097,8 @@ export class DefaultRenderer extends Renderer {
         param,
         inner_reharsal_mark,
         ylimit,
-        music_context
+        music_context,
+        suppress_section_margin=false
     ) {
         var x_global_scale = track.getVariable("X_GLOBAL_SCALE");
         var transpose = track.getVariable("TRANSPOSE");
@@ -2016,7 +2113,7 @@ export class DefaultRenderer extends Renderer {
         var _5lines_intv = param.rs_area_height / (5 - 1);
 
         var yprof = this.screeningYAreas(row_elements_list, y_base, param, show_staff, 
-            inner_reharsal_mark);
+            inner_reharsal_mark, prev_measure, suppress_section_margin);
         
         var y_body_or_rs_base = yprof.rs.detected ? yprof.rs.y : yprof.body.y;
         var repeat_mark_y_base = yprof.rs.detected ? 
@@ -2113,7 +2210,10 @@ export class DefaultRenderer extends Renderer {
                             yprof.mu.y + yprof.mu.height,
                             e.comment,
                             param.base_font_size / 2,
-                            "lb"
+                            "lb",
+                            null,
+                            null,
+                            {font:param.annotation_font}
                         );
                         mh_offset += r.width;
                         this.hitManager.add(paper, r.bb, e);
@@ -2160,22 +2260,28 @@ export class DefaultRenderer extends Renderer {
                         param.base_font_size, null, paper.ratio, paper.zoom).height;
                     let row_height = yprof.rs.detected ?param.rs_area_height : param.row_height;
                     let cont_height = yprof.rs.detected ?param.rs_area_height : chord_str_height;
-                    let left_margin = 2;
+                    const rhythmProfile = (this.music_font_profile && this.music_font_profile.rhythm) || {};
+                    const timeSigScale = (typeof rhythmProfile.timeSigScale === "number") ? rhythmProfile.timeSigScale : 1.0;
+                    const timeSigLeftMargin = (typeof rhythmProfile.timeSigLeftMargin === "number") ? rhythmProfile.timeSigLeftMargin : 2;
+                    const timeSigCenterYOffset = (typeof rhythmProfile.timeSigCenterYOffset === "number") ? rhythmProfile.timeSigCenterYOffset : 0;
+                    let left_margin = timeSigLeftMargin;
+                    let timeSigCenterY = y_body_or_rs_base + row_height/2 + timeSigCenterYOffset;
+                    let timeSigHeight = cont_height/2 * timeSigScale;
                     
                     let rd = graphic.canvasImage(paper, 
-                        graphic.G_imgmap["uniE08"+e.numer],// numbers
+                        this.getMusicGlyph("uniE08"+e.numer),// numbers
                         x + left_margin, 
-                        y_body_or_rs_base + row_height/2, 
+                        timeSigCenterY,
                         null, 
-                        cont_height/2,
+                        timeSigHeight,
                         "lb",
                         true);
                     let rn = graphic.canvasImage(paper, 
-                        graphic.G_imgmap["uniE08"+e.denom],// numbers
+                        this.getMusicGlyph("uniE08"+e.denom),// numbers
                         x + left_margin, 
-                        y_body_or_rs_base + row_height/2, 
+                        timeSigCenterY,
                         null, 
-                        cont_height/2,
+                        timeSigHeight,
                         "lt",
                         true);
                     x += e.renderprop.w;
@@ -2463,7 +2569,7 @@ export class DefaultRenderer extends Renderer {
         var text_size = B/2;
         let bb = new graphic.BoundingBox();
         let r = graphic.canvasImage(paper, 
-            graphic.G_imgmap["uniE047"], //segno.svg
+            this.getMusicGlyph("uniE047"), //segno.svg
             lx, 
             y, 
             img_width, 
@@ -2530,7 +2636,7 @@ export class DefaultRenderer extends Renderer {
                 bb.add_BB(r.bb);
             }
             let r = graphic.canvasImage(paper, 
-                graphic.G_imgmap["uniE048"],  //coda.svg
+                this.getMusicGlyph("uniE048"),  //coda.svg
                 x - width, 
                 y, 
                 img_width, 
@@ -2541,7 +2647,7 @@ export class DefaultRenderer extends Renderer {
             bb.add_BB(r.bb);
         } else if (align[0] == "l") {
             let r = graphic.canvasImage(paper, 
-                graphic.G_imgmap["uniE048"],  // coda.svg
+                this.getMusicGlyph("uniE048"),  // coda.svg
                 x , 
                 y, 
                 img_width, 
@@ -2570,12 +2676,15 @@ export class DefaultRenderer extends Renderer {
     }
 
     renderChordAsString(chord, paper, x, y_body_base, param, draw) {
+        const chordProfile = (this.music_font_profile && this.music_font_profile.chord) || getMusicFontProfile("bravura").chord;
+        const userChordScale = (typeof param.chord_font_scale === "number" && param.chord_font_scale > 0) ? param.chord_font_scale : 1.0;
+        const B = param.base_font_size * userChordScale * chordProfile.fontSizeScale;
         let r = graphic.canvasText(
             paper,
             x,
             y_body_base + param.row_height / 2,
             chord.chord_str,
-            param.base_font_size * 0.6,
+            B * 0.6,
             "lm",
             undefined,
             !draw
@@ -2642,11 +2751,12 @@ export class DefaultRenderer extends Renderer {
             }
         }
         let namemap = {1:"uniE4F4", 2:"uniE4F5", 4:"uniE4E5", 8:"uniE4E6"};
-        let img = graphic.G_imgmap[namemap[(rd <= 4 ? rd : 8)]];
+        let img = this.getMusicGlyph(namemap[(rd <= 4 ? rd : 8)]);
         let s = img.height / heights[rd];
 
-        let rdx = 2;
-        let rdy = -_5i;
+        const restProfile = (this.music_font_profile && this.music_font_profile.rest) || { stackXShift: 2, stackYShiftIn5Lines: -1 };
+        let rdx = restProfile.stackXShift;
+        let rdy = restProfile.stackYShiftIn5Lines * _5i;
         
         let nKasane = common.myLog2(rd) - 2;
 
@@ -2801,7 +2911,10 @@ export class DefaultRenderer extends Renderer {
         var elems = ce.mid_elem_objs;
 
         var y = y_body_base;
-        var B = param.base_font_size;
+        const chordProfile = (this.music_font_profile && this.music_font_profile.chord) || getMusicFontProfile("bravura").chord;
+        const userChordScale = (typeof param.chord_font_scale === "number" && param.chord_font_scale > 0) ? param.chord_font_scale : 1.0;
+        var B = param.base_font_size * userChordScale * chordProfile.fontSizeScale;
+        const useTextAccidentals = chordProfile.useTextAccidentals;
 
         // if bases are null, elems are null, then it is just a duration information
         if (bases[0] == null && bases[1] == null && elems === undefined) {
@@ -2838,9 +2951,9 @@ export class DefaultRenderer extends Renderer {
         // Typically "G" has max width among characters used for chords.
         // Adjustment based on "G" sometimes lead to too much space for other thinner fonts like "F".
         // A little bit of compressing the default character width will absorb such a difference. Here *0.9 is used. 
-        var char_width_scale = 0.7;
-        var main_char_width = 0.7; 
-        var space_char_width = 0.3;
+        var char_width_scale = chordProfile.charWidthScale;
+        var main_char_width = chordProfile.mainCharWidth;
+        var space_char_width = chordProfile.spaceCharWidth;
 
         if (root) {
             let r = graphic.canvasText(
@@ -2858,25 +2971,26 @@ export class DefaultRenderer extends Renderer {
             lower_width = B * main_char_width;
             if (root.length == 2) {
                 let acc_height = rootCharHeight/2.0+rootCharHeight/8.0;
-                let acc_width = B * 0.25;
-                if (root[1] == "b") {
-                    if (draw){
-                        let r = graphic.canvasImage(
-                            canvas,
-                            graphic.G_imgmap["uni266D"], // flat.svg
-                            x + upper_width,
-                            y + param.row_height/2 + chord_offset_on_bass + upper_tension_y_offset,
-                            acc_width,
-                            acc_height,
-                            "lb");
-                        bb.add_BB(r.bb);
-                    }
-                    upper_width += acc_width;
+                let acc_width = B * chordProfile.rootAccWidth;
+                const accidentalChar = root[1] == "b" ? "\u266D" : "\u266F";
+                if (useTextAccidentals) {
+                    let r = graphic.canvasText(
+                        canvas,
+                        x + upper_width,
+                        y + param.row_height/2 + chord_offset_on_bass + upper_tension_y_offset,
+                        accidentalChar,
+                        B * chordProfile.accidentalTextScaleRoot,
+                        "lb",
+                        B * chordProfile.accidentalTextScaleRoot,
+                        !draw
+                    );
+                    bb.add_BB(r.bb);
+                    upper_width += r.width;
                 } else {
                     if (draw){
                         let r = graphic.canvasImage(
                             canvas,
-                            graphic.G_imgmap["uni266F"], // sharp.svg
+                            this.getMusicGlyph(root[1] == "b" ? "uni266D" : "uni266F"),
                             x + upper_width,
                             y + param.row_height/2 + chord_offset_on_bass + upper_tension_y_offset,
                             acc_width,
@@ -2932,11 +3046,12 @@ export class DefaultRenderer extends Renderer {
                 lower_width += r.width;
                 bb.add_BB(r.bb);
             } else if (e.type == "triad" && e.value == "m") {
+                const minorChar = param.minor_chord_style === "m" ? "m" : String.fromCharCode(0x2013);
                 let r = graphic.canvasText(
                     canvas,
                     x + lower_width,
                     y + param.row_height/2 + rootCharHeight/2 + chord_offset_on_bass + lower_onbass_y_offset,
-                    String.fromCharCode(0x2013),
+                    minorChar,
                     B * 0.5,
                     "lb",
                     B * 0.5,
@@ -3063,18 +3178,33 @@ export class DefaultRenderer extends Renderer {
             var h = graphic.getCharProfile(B * 0.5, null, canvas.ratio, canvas.zoom).height;
             _alteredelem.forEach((e, index) => {
                 if(e.type == "tension" && (e.value == "b" || e.value == "#")){
-                    if (draw){
-                        let r = graphic.canvasImage(canvas,
-                            graphic.G_imgmap[e.value=="b" ? "uni266D" : "uni266F"], // flat.svg,
+                    if (useTextAccidentals) {
+                        let r = graphic.canvasText(
+                            canvas,
                             x + tensions_pos + tensions_width,
                             y + param.row_height/2 + chord_offset_on_bass + upper_tension_y_offset,
-                            B * 0.2,
-                            h,
-                            "lb"
+                            e.value=="b" ? "\u266D" : "\u266F",
+                            B * chordProfile.accidentalTextScaleTension,
+                            "lb",
+                            B * chordProfile.accidentalTextScaleTension,
+                            !draw
                         );
                         bb.add_BB(r.bb);
+                        tensions_width += r.width;
+                    } else {
+                        if (draw){
+                            let r = graphic.canvasImage(canvas,
+                                this.getMusicGlyph(e.value=="b" ? "uni266D" : "uni266F"),
+                                x + tensions_pos + tensions_width,
+                                y + param.row_height/2 + chord_offset_on_bass + upper_tension_y_offset,
+                                B * chordProfile.tensionAccWidth,
+                                h,
+                                "lb"
+                            );
+                            bb.add_BB(r.bb);
+                        }
+                        tensions_width += B * chordProfile.tensionAccWidth;
                     }
-                    tensions_width += B * 0.2;
 
                     let r = graphic.canvasText(
                         canvas,
@@ -3162,40 +3292,38 @@ export class DefaultRenderer extends Renderer {
             onbass_width += r.width;
             bb.add_BB(r.bb);
             if (onbass.length == 2) {
-                if (onbass[1] == "b") {
-                    if (draw){
-                        let rd = graphic.canvasImage(canvas, 
-                            graphic.G_imgmap["uni266D"], // flat.svg
-                            onbass_pos + onbass_width, 
-                            y + param.row_height/2 + rootCharHeight/2
-                             + chord_offset_on_bass
-                             + on_bass_below_a_margin
-                             + on_bass_y_offset,
-                            B*0.2, 
-                            r.height, 
-                            param.on_bass_style == "below"  ? "lt" : "lb", 
-                            true);
-                        bb.add_BB(rd.bb);
-                    }
-                        
-                    onbass_width += B * 0.2;
+                const accidentalChar = onbass[1] == "b" ? "\u266D" : "\u266F";
+                const accidentalAlign = param.on_bass_style == "below"  ? "lt" : "lb";
+                const accidentalY = y + param.row_height/2 + rootCharHeight/2
+                    + chord_offset_on_bass
+                    + on_bass_below_a_margin
+                    + on_bass_y_offset;
+                if (useTextAccidentals) {
+                    let rd = graphic.canvasText(
+                        canvas,
+                        onbass_pos + onbass_width,
+                        accidentalY,
+                        accidentalChar,
+                        B * chordProfile.accidentalTextScaleOnBass,
+                        accidentalAlign,
+                        B * chordProfile.accidentalTextScaleOnBass,
+                        !draw
+                    );
+                    bb.add_BB(rd.bb);
+                    onbass_width += rd.width;
                 } else {
                     if (draw){
                         let rd = graphic.canvasImage(canvas, 
-                            graphic.G_imgmap["uni266F"], // sharp.svg 
+                            this.getMusicGlyph(onbass[1] == "b" ? "uni266D" : "uni266F"),
                             onbass_pos + onbass_width, 
-                            y + param.row_height/2 + rootCharHeight/2 
-                                + chord_offset_on_bass
-                                + on_bass_below_a_margin 
-                                + on_bass_y_offset,
-                            B*0.2, 
+                            accidentalY,
+                            B * chordProfile.onBassAccWidth,
                             r.height, 
-                            param.on_bass_style == "below"  ? "lt" : "lb", 
+                            accidentalAlign,
                             true);
                         bb.add_BB(rd.bb);
                     }
-
-                    onbass_width += B * 0.2;
+                    onbass_width += B * chordProfile.onBassAccWidth;
                 }
             }
 

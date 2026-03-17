@@ -64,7 +64,7 @@ module.exports = {
         {
           from: "src/font-make.html",
           to: "font-make.html",
-        },   
+        },
       ],
     }),
     new webpack.BannerPlugin({

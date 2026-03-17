@@ -20,6 +20,7 @@ nav:
 
     - 'API':
       - 'Quick Start': 'api_quick_start.md'
+      - 'Music Fonts': 'music-font.md'
       - 'Reference': 'api_reference.md'
     - 'Playground': '/fumen/playground/'
 theme:
@@ -35,4 +36,3 @@ site_dir: '../docs'
 google_analytics:
   - UA-165626899-1
   - auto
-

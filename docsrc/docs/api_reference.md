@@ -355,6 +355,7 @@ An Object to specify prameters for rendering engine
 | [paper_height] | <code>Number</code> | <code>667</code> | Height of the paper. If 0 is specified, the paper height is fit to its contents. |
 | [text_size] | <code>float</code> | <code>1.0</code> | Text size as a ratio to default size. 0.9 means 10% smaller than default size. |
 | [base_font_size] | <code>int</code> |  | Font size of the chord symbols. |
+| [chord_font_scale] | <code>float</code> | <code>1.0</code> | Additional multiplier for chord symbol sizing (applied with `base_font_size`). |
 | [title_font_size] | <code>int</code> |  | Title font size |
 | [artist_font_size] | <code>int</code> |  | Artist font size |
 | [x_offset] | <code>int</code> |  | Margin of the left and right side of the paper. |
@@ -368,6 +369,10 @@ An Object to specify prameters for rendering engine
 | [y_subtitle_offset] | <code>int</code> |  | Top offset for sub-title |
 | [y_artist_offset] | <code>int</code> |  | Top offset for artist row |
 | [y_footer_offset] | <code>int</code> |  | Bottom offset for footer |
+| [music_font] | <code>String</code> | <code>"bravura"</code> | Music font selector. Use `"bravura"` or `"petaluma"` for built-in fonts, or `"custom"` with `music_font_data`. |
+| [music_font_data] | <code>Object</code> |  | Custom music glyph set keyed by glyph names (e.g. `"uniE0A2"`), each containing at least `dataURL`. |
+| [minor_chord_style] | <code>String</code> | <code>"minus"</code> | Minor triad marker style. `"minus"` uses minus-style notation, `"m"` uses lowercase `m`. |
+| [section_margin_top] | <code>int</code> | <code>0</code> | Extra vertical space before rows that start a rehearsal section. Not applied at top-of-page rows. |
 
 <a name="canvasProvider"></a>
 
@@ -376,4 +381,3 @@ Callback function when new canvas is requested by renderer.
 
 **Kind**: global typedef  
 **Returns**: <code>HTMLElement</code> \| <code>Promise.&lt;HTMLElement&gt;</code> - HTML canvas element  
-

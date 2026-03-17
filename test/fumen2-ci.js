@@ -55,14 +55,18 @@ let takediff = (img1path, img2path, diffpath) => {
     }
 };
 
-let capture = (async(addr, fumenfile, headInfo, base_commit) => {
-	let tcname = path.parse(fumenfile).name;
+let capture = (async(addr, testCase, headInfo, base_commit) => {
+    let fumenfile = testCase.file;
+    let tcname = testCase.name || path.parse(fumenfile).name;
 	let code = fs.readFileSync(fumenfile,"utf-8");
     //console.log(code);
     let param = {
         "paper_width":400,
         "paper_height":600
     };
+    if(testCase.param){
+        param = Object.assign(param, testCase.param);
+    }
 
     let options = {
         ignoreDefaultArgs: ["--disable-extensions"], 
@@ -159,7 +163,7 @@ let capture = (async(addr, fumenfile, headInfo, base_commit) => {
     
     return {numDiffPixels:numDiffPixels, head_full_path:head_full_path, prev_full_path:prev_full_path, diff_full_path:diff_full_path, 
         headId:(pngname.includes("workingcopy") ? `Working copy of ${headInfo.commit}` : ` ${headInfo.commit}`),
-        prevId: `${prev_sc_file.commit}`};
+        prevId: prev_sc_file ? `${prev_sc_file.commit}` : "(first screenshot)"};
 });
 
 let imgtag = function(src){
@@ -192,14 +196,48 @@ let dotest = async (headInfo)=>{
         "align.fumen",
         "tuplet.fumen",
         "multiup.fumen"];
+    const renderModes = [
+        { suffix: "bravura", param: {} },
+        { suffix: "petaluma", param: { music_font: "petaluma" } }
+    ];
+    const cases = [];
+    files.forEach((file)=>{
+        renderModes.forEach((mode)=>{
+            const base = path.parse(file).name;
+            cases.push({
+                file: file,
+                name: `${base}.${mode.suffix}`,
+                param: Object.assign({}, mode.param)
+            });
+        });
+    });
+
+    // Additional coverage for newly added params
+    renderModes.forEach((mode)=>{
+        cases.push({
+            file: "minor_and_scale.fumen",
+            name: `minor_style_m.${mode.suffix}`,
+            param: Object.assign({}, mode.param, { minor_chord_style: "m" })
+        });
+        cases.push({
+            file: "minor_and_scale.fumen",
+            name: `chord_font_scale_085.${mode.suffix}`,
+            param: Object.assign({}, mode.param, { chord_font_scale: 0.85 })
+        });
+        cases.push({
+            file: "section_margin_top.fumen",
+            name: `section_margin_top_20.${mode.suffix}`,
+            param: Object.assign({}, mode.param, { section_margin_top: 20 })
+        });
+    });
     const results = [];
 
-    for(let i=0; i<files.length; ++i){
-        let r = await capture(addr,files[i], headInfo, base_commit);
+    for(let i=0; i<cases.length; ++i){
+        let r = await capture(addr, cases[i], headInfo, base_commit);
         if(i==0)  report_html += tablerowtag(["Test Case", "Num Different Pixels", r.headId, r.prevId, "Diff Image"]); 
         results.push(r.numDiffPixels);
         report_html += tablerowtag([
-            files[i], r.numDiffPixels,
+            cases[i].name, r.numDiffPixels,
             imgtag(r.head_full_path), imgtag(r.prev_full_path), imgtag(r.diff_full_path)]
         );
     }
@@ -209,8 +247,8 @@ let dotest = async (headInfo)=>{
         console.log("Report generated");
     });
     
-    for(let i=0; i<files.length; ++i){
-        console.log(files[i]+ " : " + results[i]);
+    for(let i=0; i<cases.length; ++i){
+        console.log(cases[i].name + " : " + results[i]);
     }
 };
 
