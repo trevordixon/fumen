@@ -13699,10 +13699,20 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
   }, {
     key: "applyTextProfile",
     value: function applyTextProfile(runtimeParam, userParam) {
+      var _this2 = this;
       var textProfile = this.music_font_profile.text;
+      var hasOwn = function hasOwn(obj, key) {
+        return Object.prototype.hasOwnProperty.call(obj, key);
+      };
+      var hasConstructorOverride = function hasConstructorOverride(key) {
+        return JSON.stringify(_this2.init_param[key]) !== JSON.stringify(SR_RENDER_PARAM[key]);
+      };
+      var shouldApplyProfileValue = function shouldApplyProfileValue(key) {
+        return !(hasOwn(userParam, key) || hasConstructorOverride(key));
+      };
       if (textProfile.paramOverrides) {
         Object.keys(textProfile.paramOverrides).forEach(function (key) {
-          if (!(key in userParam)) {
+          if (shouldApplyProfileValue(key)) {
             runtimeParam[key] = textProfile.paramOverrides[key];
           }
         });
@@ -13711,19 +13721,19 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
         defaultTextFontConfs: textProfile.defaultTextFontConfs || null,
         defaultTextSizeScale: typeof textProfile.defaultTextSizeScale === "number" && textProfile.defaultTextSizeScale > 0 ? textProfile.defaultTextSizeScale : 1.0
       };
-      if (textProfile.titleFont && !("title_font" in userParam)) {
+      if (textProfile.titleFont && shouldApplyProfileValue("title_font")) {
         runtimeParam.title_font = _common_common__WEBPACK_IMPORTED_MODULE_2__.deepcopy(textProfile.titleFont);
       }
-      if (textProfile.subtitleFont && !("subtitle_font" in userParam)) {
+      if (textProfile.subtitleFont && shouldApplyProfileValue("subtitle_font")) {
         runtimeParam.subtitle_font = _common_common__WEBPACK_IMPORTED_MODULE_2__.deepcopy(textProfile.subtitleFont);
       }
-      if (textProfile.artistFont && !("artist_font" in userParam)) {
+      if (textProfile.artistFont && shouldApplyProfileValue("artist_font")) {
         runtimeParam.artist_font = _common_common__WEBPACK_IMPORTED_MODULE_2__.deepcopy(textProfile.artistFont);
       }
-      if (textProfile.annotationFont && !("annotation_font" in userParam)) {
+      if (textProfile.annotationFont && shouldApplyProfileValue("annotation_font")) {
         runtimeParam.annotation_font = _common_common__WEBPACK_IMPORTED_MODULE_2__.deepcopy(textProfile.annotationFont);
       }
-      if (textProfile.repeatMarkFont && !("repeat_mark_font" in userParam)) {
+      if (textProfile.repeatMarkFont && shouldApplyProfileValue("repeat_mark_font")) {
         runtimeParam.repeat_mark_font = _common_common__WEBPACK_IMPORTED_MODULE_2__.deepcopy(textProfile.repeatMarkFont);
       }
     }
@@ -13736,7 +13746,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
   }, {
     key: "render",
     value: function render(track) {
-      var _this2 = this;
+      var _this3 = this;
       var param = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
       this.track = track;
       var runtimeParam = this.getRenderParamForRun(param);
@@ -13749,8 +13759,8 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
       }
       return Promise.all(preloadTasks).then(function (results) {
         var music_font = results[0];
-        _this2.music_font = music_font;
-        return _this2.renderImpl(track, runtimeParam);
+        _this3.music_font = music_font;
+        return _this3.renderImpl(track, runtimeParam);
       });
     }
   }, {
@@ -14331,7 +14341,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
     key: "renderImpl",
     value: function () {
       var _renderImpl = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee(track, rparam) {
-        var _this3 = this;
+        var _this4 = this;
         var param, page_width, page_content_width, show_footer, music_context, meas_row_list, accum_block_id, meas_row, meas_row_rg_ids, meas_row_block_ids, reharsal_groups, i, rg, blocks, bi, block_measures, ml, m, meas_row_list_inv, _loop4, _i2, _i3, _rg, _blocks, _bi, _block_measures, _ml, _m, y_stacks, next_reharsal_group_index, yse, y_base_screening, headerHeight, dammy_music_context, current_accum_block_id, reharsal_x_width_info, pei, row_elements_list, _ml2, _m2, elements, geret, yprof, x_width_info, page_height, pageOffset, start_pageidx, page_origin, canvas, y_base, max_header_height, headerH, pages, _pei, _row_elements_list3, ylimit, suppressSectionMargin, r, rb, songname, title, artist;
         return _regeneratorRuntime().wrap(function _callee$(_context2) {
           while (1) switch (_context2.prev = _context2.next) {
@@ -14529,10 +14539,10 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
                   var mparam = m.getVariable("PARAM");
                   if (mparam) {
                     if (!param_for_row_alt) {
-                      _this3.mergeParam(param_for_row, _common_common__WEBPACK_IMPORTED_MODULE_2__.deepcopy(mparam), false); // Overwrite 
+                      _this4.mergeParam(param_for_row, _common_common__WEBPACK_IMPORTED_MODULE_2__.deepcopy(mparam), false); // Overwrite 
                       param_for_row_alt = true;
                     } else {
-                      _this3.mergeParam(param_for_row, _common_common__WEBPACK_IMPORTED_MODULE_2__.deepcopy(mparam), true); // Update 
+                      _this4.mergeParam(param_for_row, _common_common__WEBPACK_IMPORTED_MODULE_2__.deepcopy(mparam), true); // Update 
                     }
                   }
                 });
@@ -14935,7 +14945,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
   }, {
     key: "screeningzXAreas",
     value: function screeningzXAreas(track, x, paper, row_elements_list, prev_measure, next_measure, yprof, param, music_context) {
-      var _this4 = this;
+      var _this5 = this;
       var transpose = track.getVariable("TRANSPOSE");
       var half_type = track.getVariable("KEY_TYPE");
       var key = track.getVariable("KEY");
@@ -14959,12 +14969,12 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
         var meas_fixed_width = 0;
         meas_num_flexible_rooms = 0;
         all_fixed_width_details = [];
-        elements = _this4.classifyElements(m);
+        elements = _this5.classifyElements(m);
         elements.header.forEach(function (e) {
           if (e instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.MeasureBoundary) {
             var pm = ml == 0 ? prev_measure : row_elements_list[ml - 1];
             var ne = pm ? pm.childNodes[pm.childNodes.length - 1] : null;
-            var r = _this4.drawBoundary("begin", ne, e, ml == 0,
+            var r = _this5.drawBoundary("begin", ne, e, ml == 0,
             //m.raw_new_line,
             paper, x, 0, dammy_rs_area_height,
             // any value is OK
@@ -14994,7 +15004,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
           type: "fixed",
           f: param.header_body_margin
         });
-        rberet = _this4.renderBodyElements(false, x, elements, param, music_context, yprof, paper, 0, 0 /*meas_start_x*/, m, 1, transpose, half_type, key, 0, 0);
+        rberet = _this5.renderBodyElements(false, x, elements, param, music_context, yprof, paper, 0, 0 /*meas_start_x*/, m, 1, transpose, half_type, key, 0, 0);
         meas_fixed_width += rberet.fixed_width;
         meas_num_flexible_rooms += rberet.num_flexible_rooms;
         all_fixed_width_details = all_fixed_width_details.concat(rberet.fixed_width_details);
@@ -15009,7 +15019,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
           if (e instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.MeasureBoundary) {
             var nm = ml == row_elements_list.length - 1 ? next_measure : row_elements_list[ml + 1];
             var ne = nm ? nm.childNodes[0] : null;
-            var r = _this4.drawBoundary("end", e, ne, ml == row_elements_list.length - 1,
+            var r = _this5.drawBoundary("end", e, ne, ml == row_elements_list.length - 1,
             //nm ? nm.raw_new_line : false,
             paper, x, 0, dammy_rs_area_height, dammy_rs_area_height, param, false);
             e.renderprop = {
@@ -15048,7 +15058,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
   }, {
     key: "renderBodyElements",
     value: function renderBodyElements(draw, x, elements, param, music_context, yprof, paper, _5lines_intv, meas_start_x, m, x_global_scale, transpose, half_type, key, C7_width, y_body_or_rs_base, balken) {
-      var _this5 = this;
+      var _this6 = this;
       var fixed_width = 0;
       var fixed_width_details = []; // show be same as num_flexible_rooms
       var num_flexible_rooms = 0;
@@ -15143,17 +15153,17 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
             width: 0
           };
           if (e0 instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.Chord && !e0.isSyncopatedSource()) {
-            cr = _this5.renderChord(draw, e0, transpose, half_type, key, paper, x / _draw_scale, yprof.body.y, param, C7_width);
-            if (draw) _this5.hitManager.add(paper, cr.bb.scale(_draw_scale, 1), e0);
+            cr = _this6.renderChord(draw, e0, transpose, half_type, key, paper, x / _draw_scale, yprof.body.y, param, C7_width);
+            if (draw) _this6.hitManager.add(paper, cr.bb.scale(_draw_scale, 1), e0);
             if (draw && e0.exceptinal_comment !== null) {
               var r = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasText(paper, x / _draw_scale, yprof.mu.y + yprof.mu.height, e0.exceptinal_comment.comment, param.base_font_size / 2, "lb");
-              _this5.hitManager.add(paper, r.bb.scale(_draw_scale, 1), e0.exceptinal_comment);
+              _this6.hitManager.add(paper, r.bb.scale(_draw_scale, 1), e0.exceptinal_comment);
             }
             if (draw && e0.lyric !== null) {
               var llist = e0.lyric.lyric.split("/");
               for (var li = 0; li < llist.length; ++li) {
                 var _r2 = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasText(paper, x / _draw_scale, yprof.ml.y + li * param.ml_row_height, llist[li], param.base_font_size / 3, "lt");
-                _this5.hitManager.add(paper, _r2.bb.scale(_draw_scale, 1), e0.lyric);
+                _this6.hitManager.add(paper, _r2.bb.scale(_draw_scale, 1), e0.lyric);
               }
             }
           } else {
@@ -15174,7 +15184,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
             var _scale8 = _slicedToArray(_scale7, 2);
             _draw_scale = _scale8[0];
             element_group_width = _scale8[1];
-            var g = _this5.renderRsArea(x,
+            var g = _this6.renderRsArea(x,
             // does not scale, all the scaing things are processed inside this function
             _draw_scale, element_group.elems, paper, yprof.rs.y, yprof.rs.height, meas_start_x,
             // NOTE : meas_start_x sould be irrespective of draw_scale.
@@ -15189,8 +15199,8 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
             // Only try to esimate using non-flag-balken drawer
             var tmp_fixed_width_details = [];
             element_group.elems.forEach(function (e) {
-              var balken_element = _this5.generateBalkenElement(e, x, yprof.rs.height, music_context);
-              var r = _this5.drawRsAreaWithoutFlagBalken(false, paper, param, e, balken_element, x, yprof.rs.y, yprof.rs.height);
+              var balken_element = _this6.generateBalkenElement(e, x, yprof.rs.height, music_context);
+              var r = _this6.drawRsAreaWithoutFlagBalken(false, paper, param, e, balken_element, x, yprof.rs.y, yprof.rs.height);
               e.renderprop.balken_element = balken_element;
               rs_area_bounding_box.add_BB(r.bounding_box);
               x += r.bounding_box.width();
@@ -15230,22 +15240,22 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
                 _draw_scale2 = _scale10[0];
                 _elem_width = _scale10[1];
               }
-              var _cr = _this5.renderChord(draw, e, transpose, half_type, key, paper, x / _draw_scale2, yprof.body.y, param, C7_width);
+              var _cr = _this6.renderChord(draw, e, transpose, half_type, key, paper, x / _draw_scale2, yprof.body.y, param, C7_width);
               if (draw && e.exceptinal_comment !== null && !e.isSyncopatedSource()) {
                 var _r3 = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasText(paper, x / _draw_scale2, yprof.mu.y + yprof.mu.height, e.exceptinal_comment.comment, param.base_font_size / 2, "lb");
-                _this5.hitManager.add(paper, _r3.bb.scale(_draw_scale2, 1), e.exceptinal_comment);
+                _this6.hitManager.add(paper, _r3.bb.scale(_draw_scale2, 1), e.exceptinal_comment);
               }
               if (draw && e.lyric !== null && !e.isSyncopatedSource()) {
                 var llist = e.lyric.lyric.split("/");
                 for (var li = 0; li < llist.length; ++li) {
                   var _r4 = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasText(paper, x / _draw_scale2, yprof.ml.y + li * param.ml_row_height, llist[li], param.base_font_size / 3, "lt");
-                  _this5.hitManager.add(paper, _r4.bb.scale(_draw_scale2, 1), e.lyric);
+                  _this6.hitManager.add(paper, _r4.bb.scale(_draw_scale2, 1), e.lyric);
                 }
               }
               if (draw) {
                 x += _elem_width;
                 unscale(_draw_scale2);
-                _this5.hitManager.add(paper, _cr.bb.scale(_draw_scale2, 1), e); // BBbox scaled to convert back to on-screen coordinate
+                _this6.hitManager.add(paper, _cr.bb.scale(_draw_scale2, 1), e); // BBbox scaled to convert back to on-screen coordinate
               } else {
                 e.renderprop.w = _cr.width; // cr.bb.width(); TODO: Do not use bb.width as it only works for draw=True
                 fixed_width += e.renderprop.w;
@@ -15264,10 +15274,10 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
                 _draw_scale3 = _scale12[0];
                 _elem_width2 = _scale12[1];
               }
-              var _cr2 = _this5.renderRest(e, paper, draw, x / _draw_scale3, y_body_or_rs_base, "l", yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, param);
+              var _cr2 = _this6.renderRest(e, paper, draw, x / _draw_scale3, y_body_or_rs_base, "l", yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, param);
               if (draw) {
                 x += _elem_width2;
-                _this5.hitManager.add(paper, _cr2.bb.scale(_draw_scale3, 1), e);
+                _this6.hitManager.add(paper, _cr2.bb.scale(_draw_scale3, 1), e);
                 unscale(_draw_scale3);
               } else {
                 e.renderprop.w = _cr2.bb.width();
@@ -15287,10 +15297,10 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
                 _draw_scale4 = _scale14[0];
                 _elem_width3 = _scale14[1];
               }
-              var _cr3 = _this5.renderSimileMark(draw, paper, x / _draw_scale4, y_body_or_rs_base, yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, e.numslash, false, "l");
+              var _cr3 = _this6.renderSimileMark(draw, paper, x / _draw_scale4, y_body_or_rs_base, yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, e.numslash, false, "l");
               if (draw) {
                 x += _elem_width3;
-                _this5.hitManager.add(paper, _cr3.bb.scale(_draw_scale4, 1), e);
+                _this6.hitManager.add(paper, _cr3.bb.scale(_draw_scale4, 1), e);
                 unscale(_draw_scale4);
               } else {
                 e.renderprop.w = _cr3.width;
@@ -15311,7 +15321,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
                 _elem_width4 = _scale16[1];
               }
               if (draw) {
-                _this5.hitManager.add(paper, new _graphic__WEBPACK_IMPORTED_MODULE_3__.BoundingBox(x, yprof.body.y, e.renderprop.w, param.row_height), e);
+                _this6.hitManager.add(paper, new _graphic__WEBPACK_IMPORTED_MODULE_3__.BoundingBox(x, yprof.body.y, e.renderprop.w, param.row_height), e);
                 x += _elem_width4;
                 unscale(_draw_scale5);
               } else {
@@ -15397,7 +15407,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
   }, {
     key: "renderMeasureRow",
     value: function renderMeasureRow(track, x, paper, row_elements_list, prev_measure, next_measure, y_base, param, inner_reharsal_mark, ylimit, music_context) {
-      var _this6 = this;
+      var _this7 = this;
       var suppress_section_margin = arguments.length > 11 && arguments[11] !== undefined ? arguments[11] : false;
       var x_global_scale = track.getVariable("X_GLOBAL_SCALE");
       var transpose = track.getVariable("TRANSPOSE");
@@ -15426,7 +15436,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
       var _loop6 = function _loop6(ml) {
         // measure object
         var m = row_elements_list[ml];
-        var elements = _this6.classifyElements(m);
+        var elements = _this7.classifyElements(m);
         mh_offset = 0;
         meas_base_x = x; // Reset music context
         music_context.pos_in_a_measure = 0; // reset
@@ -15447,19 +15457,19 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
         if (m.renderprop && m.renderprop.rg_from_here && m.renderprop.rg_from_here.name != "") {
           var reharsal_group = m.renderprop.rg_from_here;
           var r = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasTextWithBox(paper, meas_base_x, inner_reharsal_mark ? yprof.mu.y : yprof.rm.y, reharsal_group.name, param.reharsal_mark_font_size, 2, _graphic__WEBPACK_IMPORTED_MODULE_3__.getCharProfile(param.reharsal_mark_font_size, null, paper.ratio, paper.zoom).height);
-          _this6.hitManager.add(paper, r.bb, reharsal_group);
+          _this7.hitManager.add(paper, r.bb, reharsal_group);
           if (inner_reharsal_mark) mh_offset += r.bb.width() + 2;
         }
         for (ei = 0; ei < elements.header.length; ++ei) {
           var e = elements.header[ei];
           if (e instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.Coda) {
-            var _r6 = _this6.drawCoda(paper, param, meas_base_x + mh_offset, yprof.mu.y + yprof.mu.height, "lb", e, param.base_font_size);
+            var _r6 = _this7.drawCoda(paper, param, meas_base_x + mh_offset, yprof.mu.y + yprof.mu.height, "lb", e, param.base_font_size);
             mh_offset += _r6.bb.width();
-            _this6.hitManager.add(paper, _r6.bb, e);
+            _this7.hitManager.add(paper, _r6.bb, e);
           } else if (e instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.Segno) {
-            var _r7 = _this6.drawSegno(paper, param, meas_base_x + mh_offset, yprof.mu.y + yprof.mu.height, e, param.base_font_size);
+            var _r7 = _this7.drawSegno(paper, param, meas_base_x + mh_offset, yprof.mu.y + yprof.mu.height, e, param.base_font_size);
             mh_offset += _r7.width;
-            _this6.hitManager.add(paper, _r7.bb, e);
+            _this7.hitManager.add(paper, _r7.bb, e);
           } else if (e instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.Comment) {
             // If this comment is associated with a chord with exceptional comment, not rendered here.
             if (!e.chorddep) {
@@ -15467,7 +15477,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
                 font: param.annotation_font
               });
               mh_offset += _r8.width;
-              _this6.hitManager.add(paper, _r8.bb, e);
+              _this7.hitManager.add(paper, _r8.bb, e);
             }
           } else if (e instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.Lyric) {
             // If this comment is associated with a chord with exceptional comment, not rendered here.
@@ -15486,7 +15496,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
           if (e instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.MeasureBoundary) {
             var pm = ml == 0 ? prev_measure : row_elements_list[ml - 1];
             var ne = pm ? pm.childNodes[pm.childNodes.length - 1] : null;
-            var _r9 = _this6.drawBoundary("begin", ne, e, ml == 0,
+            var _r9 = _this7.drawBoundary("begin", ne, e, ml == 0,
             //m.raw_new_line,
             paper, x, y_body_or_rs_base, yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, param, true);
             m.renderprop.y = y_body_or_rs_base;
@@ -15494,34 +15504,34 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
             m.renderprop.paper = paper;
             x += e.renderprop.w;
             meas_start_x_actual_boundary = _r9.actual_boundary;
-            if (_r9.bb) _this6.hitManager.add(paper, _r9.bb, e);
-            if (_r9.bb2) _this6.hitManager.add(paper, _r9.bb2, e);
+            if (_r9.bb) _this7.hitManager.add(paper, _r9.bb, e);
+            if (_r9.bb2) _this7.hitManager.add(paper, _r9.bb2, e);
           } else if (e instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.Time) {
             var chord_str_height = _graphic__WEBPACK_IMPORTED_MODULE_3__.getCharProfile(param.base_font_size, null, paper.ratio, paper.zoom).height;
             var row_height = yprof.rs.detected ? param.rs_area_height : param.row_height;
             var cont_height = yprof.rs.detected ? param.rs_area_height : chord_str_height;
-            var rhythmProfile = _this6.music_font_profile && _this6.music_font_profile.rhythm || {};
+            var rhythmProfile = _this7.music_font_profile && _this7.music_font_profile.rhythm || {};
             var timeSigScale = typeof rhythmProfile.timeSigScale === "number" ? rhythmProfile.timeSigScale : 1.0;
             var timeSigLeftMargin = typeof rhythmProfile.timeSigLeftMargin === "number" ? rhythmProfile.timeSigLeftMargin : 2;
             var timeSigCenterYOffset = typeof rhythmProfile.timeSigCenterYOffset === "number" ? rhythmProfile.timeSigCenterYOffset : 0;
             var left_margin = timeSigLeftMargin;
             var timeSigCenterY = y_body_or_rs_base + row_height / 2 + timeSigCenterYOffset;
             var timeSigHeight = cont_height / 2 * timeSigScale;
-            var rd = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasImage(paper, _this6.getMusicGlyph("uniE08" + e.numer),
+            var rd = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasImage(paper, _this7.getMusicGlyph("uniE08" + e.numer),
             // numbers
             x + left_margin, timeSigCenterY, null, timeSigHeight, "lb", true);
-            var rn = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasImage(paper, _this6.getMusicGlyph("uniE08" + e.denom),
+            var rn = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasImage(paper, _this7.getMusicGlyph("uniE08" + e.denom),
             // numbers
             x + left_margin, timeSigCenterY, null, timeSigHeight, "lt", true);
             x += e.renderprop.w;
-            _this6.hitManager.add(paper, rd.bb.add_BB(rn.bb), e);
+            _this7.hitManager.add(paper, rd.bb.add_BB(rn.bb), e);
           }
         });
         var header_width = x - meas_start_x;
         x += param.header_body_margin;
 
         // Draw body
-        var rberet = _this6.renderBodyElements(true, x, elements, param, music_context, yprof, paper, _5lines_intv, meas_start_x, m, x_global_scale, transpose, half_type, key, C7_width, y_body_or_rs_base, balken);
+        var rberet = _this7.renderBodyElements(true, x, elements, param, music_context, yprof, paper, _5lines_intv, meas_start_x, m, x_global_scale, transpose, half_type, key, C7_width, y_body_or_rs_base, balken);
         x = rberet.x;
         x += param.body_footer_margin;
         var footer_start_x = x;
@@ -15533,34 +15543,34 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
           if (_e2 instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.MeasureBoundary) {
             nm = ml == row_elements_list.length - 1 ? next_measure : row_elements_list[ml + 1];
             ne = nm ? nm.childNodes[0] : null;
-            var _r10 = _this6.drawBoundary("end", _e2, ne, ml == row_elements_list.length - 1,
+            var _r10 = _this7.drawBoundary("end", _e2, ne, ml == row_elements_list.length - 1,
             //nm ? nm.raw_new_line : false,
             paper, x, y_body_or_rs_base, yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, param, true);
             m.renderprop.ex = x;
             x += _e2.renderprop.w;
-            if (_r10.bb) _this6.hitManager.add(paper, _r10.bb, _e2);
-            if (_r10.bb2) _this6.hitManager.add(paper, _r10.bb2, _e2);
+            if (_r10.bb) _this7.hitManager.add(paper, _r10.bb, _e2);
+            if (_r10.bb2) _this7.hitManager.add(paper, _r10.bb2, _e2);
           } else if (_e2 instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.DaCapo) {
             var _r11 = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasText(paper, x, repeat_mark_y_base, _e2.toString(), param.base_font_size / 2, "rb", null, null, {
               font: param.repeat_mark_font
             });
-            _this6.hitManager.add(paper, _r11.bb, _e2);
+            _this7.hitManager.add(paper, _r11.bb, _e2);
           } else if (_e2 instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.DalSegno) {
             var _r12 = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasText(paper, x, repeat_mark_y_base, _e2.toString(), param.base_font_size / 2, "rb", null, null, {
               font: param.repeat_mark_font
             });
-            _this6.hitManager.add(paper, _r12.bb, _e2);
+            _this7.hitManager.add(paper, _r12.bb, _e2);
           } else if (_e2 instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.ToCoda) {
-            var _r13 = _this6.drawCoda(paper, param, x, repeat_mark_y_base, "rb", _e2, param.base_font_size);
+            var _r13 = _this7.drawCoda(paper, param, x, repeat_mark_y_base, "rb", _e2, param.base_font_size);
             var rt = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasText(paper, x - _r13.bb.width(), repeat_mark_y_base, "To", param.base_font_size / 2, "rb", null, null, {
               font: param.repeat_mark_font
             });
-            _this6.hitManager.add(paper, _r13.bb.add_BB(rt.bb), _e2);
+            _this7.hitManager.add(paper, _r13.bb.add_BB(rt.bb), _e2);
           } else if (_e2 instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.Fine) {
             var _r14 = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasText(paper, x, repeat_mark_y_base, _e2.toString(), param.base_font_size / 2, "rb", null, null, {
               font: param.repeat_mark_font
             });
-            _this6.hitManager.add(paper, _r14.bb, _e2);
+            _this7.hitManager.add(paper, _r14.bb, _e2);
           } else {
             throw "Unkown instance of footer elements";
           }
@@ -15583,7 +15593,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
             var _r15 = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasText(paper, sx + 2, ly + oy / 2, s, param.base_font_size / 3, "lm", null, null, {
               font: param.repeat_mark_font
             });
-            _this6.hitManager.add(paper, bb.add_BB(_r15.bb), _e3);
+            _this7.hitManager.add(paper, bb.add_BB(_r15.bb), _e3);
           } else if (_e3 instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.LongRest) {
             var height = yprof.rs.detected ? param.rs_area_height : param.row_height;
             var _sx = meas_start_x + header_width; // header_width does not include header_body_margin
@@ -15614,7 +15624,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
               font: param.repeat_mark_font
             });
             _bb.add_BB(_r16.bb);
-            _this6.hitManager.add(paper, _bb, _e3);
+            _this7.hitManager.add(paper, _bb, _e3);
 
             //rest_or_long_rests_detected |= true;
           } else if (_e3 instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.Rest) {
@@ -15624,21 +15634,21 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
             }
             var _sx2 = meas_start_x + header_width; // header_width does not include header_body_margin
             var _fx2 = meas_end_x - footer_width;
-            var cr = _this6.renderRest(_e3, paper, true, (_sx2 + _fx2) / 2, y_body_or_rs_base, "c", yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, param);
-            _this6.hitManager.add(paper, cr.bb, _e3);
+            var cr = _this7.renderRest(_e3, paper, true, (_sx2 + _fx2) / 2, y_body_or_rs_base, "c", yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, param);
+            _this7.hitManager.add(paper, cr.bb, _e3);
           } else if (_e3 instanceof _common_common__WEBPACK_IMPORTED_MODULE_2__.Simile) {
             // Simile mark in measure wide element if there is no other body elements in this measure
             var _sx3 = meas_start_x + header_width; // header_width does not include header_body_margin
             var _fx3 = meas_end_x - footer_width;
-            var _r17 = _this6.renderSimileMark(true, paper, (_sx3 + _fx3) / 2, y_body_or_rs_base, yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, _e3.numslash, false, "c");
-            _this6.hitManager.add(paper, _r17.bb, _e3);
+            var _r17 = _this7.renderSimileMark(true, paper, (_sx3 + _fx3) / 2, y_body_or_rs_base, yprof.rs.detected ? param.rs_area_height : param.row_height, yprof.rs.detected ? param.rs_area_height : param.base_body_height, _e3.numslash, false, "c");
+            _this7.hitManager.add(paper, _r17.bb, _e3);
           } else {
             throw "Unkown measure wide instance detected";
           }
         }
         m.renderprop.meas_end_x = meas_end_x;
         m.renderprop.meas_start_x = meas_start_x;
-        _this6.hitManager.add(paper, new _graphic__WEBPACK_IMPORTED_MODULE_3__.BoundingBox(meas_start_x, y_base, meas_end_x - meas_start_x, yprof.end.y - y_base), m);
+        _this7.hitManager.add(paper, new _graphic__WEBPACK_IMPORTED_MODULE_3__.BoundingBox(meas_start_x, y_base, meas_end_x - meas_start_x, yprof.end.y - y_base), m);
       };
       for (var ml = 0; ml < row_elements_list.length; ++ml) {
         var mh_offset, meas_base_x, ei, footer_base, nm, ne, meas_end_x, oy, ly, sx, fx, s, rh, r_lrmargin, min_lrmargin, max_lrmargin, yshift, vlmargin, lx, rx;
@@ -15893,7 +15903,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
   }, {
     key: "renderChord",
     value: function renderChord(draw, chord, transpose, half_type, key, canvas, x, y_body_base, param, C7_width) {
-      var _this7 = this;
+      var _this8 = this;
       if (!chord.is_valid_chord) {
         var r = this.renderChordAsString(chord, canvas, x, y_body_base, param, draw);
         // add width for now. TODO : remove
@@ -16056,7 +16066,7 @@ var DefaultRenderer = /*#__PURE__*/function (_Renderer) {
               tensions_width += _r41.width;
             } else {
               if (draw) {
-                var _r42 = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasImage(canvas, _this7.getMusicGlyph(e.value == "b" ? "uni266D" : "uni266F"), x + tensions_pos + tensions_width, y + param.row_height / 2 + chord_offset_on_bass + upper_tension_y_offset, B * chordProfile.tensionAccWidth, h, "lb");
+                var _r42 = _graphic__WEBPACK_IMPORTED_MODULE_3__.canvasImage(canvas, _this8.getMusicGlyph(e.value == "b" ? "uni266D" : "uni266F"), x + tensions_pos + tensions_width, y + param.row_height / 2 + chord_offset_on_bass + upper_tension_y_offset, B * chordProfile.tensionAccWidth, h, "lb");
                 bb.add_BB(_r42.bb);
               }
               tensions_width += B * chordProfile.tensionAccWidth;

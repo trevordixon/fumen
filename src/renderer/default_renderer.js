@@ -218,9 +218,14 @@ export class DefaultRenderer extends Renderer {
 
     applyTextProfile(runtimeParam, userParam){
         const textProfile = this.music_font_profile.text;
+        const hasOwn = (obj, key)=>Object.prototype.hasOwnProperty.call(obj, key);
+        const hasConstructorOverride = (key)=>
+            JSON.stringify(this.init_param[key]) !== JSON.stringify(SR_RENDER_PARAM[key]);
+        const shouldApplyProfileValue = (key)=>
+            !(hasOwn(userParam, key) || hasConstructorOverride(key));
         if(textProfile.paramOverrides){
             Object.keys(textProfile.paramOverrides).forEach((key)=>{
-                if(!(key in userParam)){
+                if(shouldApplyProfileValue(key)){
                     runtimeParam[key] = textProfile.paramOverrides[key];
                 }
             });
@@ -232,19 +237,19 @@ export class DefaultRenderer extends Renderer {
                     ? textProfile.defaultTextSizeScale
                     : 1.0
         };
-        if(textProfile.titleFont && !("title_font" in userParam)){
+        if(textProfile.titleFont && shouldApplyProfileValue("title_font")){
             runtimeParam.title_font = common.deepcopy(textProfile.titleFont);
         }
-        if(textProfile.subtitleFont && !("subtitle_font" in userParam)){
+        if(textProfile.subtitleFont && shouldApplyProfileValue("subtitle_font")){
             runtimeParam.subtitle_font = common.deepcopy(textProfile.subtitleFont);
         }
-        if(textProfile.artistFont && !("artist_font" in userParam)){
+        if(textProfile.artistFont && shouldApplyProfileValue("artist_font")){
             runtimeParam.artist_font = common.deepcopy(textProfile.artistFont);
         }
-        if(textProfile.annotationFont && !("annotation_font" in userParam)){
+        if(textProfile.annotationFont && shouldApplyProfileValue("annotation_font")){
             runtimeParam.annotation_font = common.deepcopy(textProfile.annotationFont);
         }
-        if(textProfile.repeatMarkFont && !("repeat_mark_font" in userParam)){
+        if(textProfile.repeatMarkFont && shouldApplyProfileValue("repeat_mark_font")){
             runtimeParam.repeat_mark_font = common.deepcopy(textProfile.repeatMarkFont);
         }
     }
