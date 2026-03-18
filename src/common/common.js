@@ -2,7 +2,6 @@
  * @module Fumen
  */
 
-import "@babel/polyfill";
 
 // Default values for variables
 

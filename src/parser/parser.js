@@ -2,7 +2,6 @@
  * @module Fumen
  */
 
-import "@babel/polyfill";
 import * as common from "../common/common";
 
 var TOKEN_INVALID = -1;

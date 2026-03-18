@@ -1,4 +1,3 @@
-import "@babel/polyfill";
 export { Parser } from "./parser/parser";
 //export * from './renderer/default_renderer';
 export { DefaultRenderer } from "./renderer/default_renderer";

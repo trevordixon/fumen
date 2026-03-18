@@ -3,7 +3,6 @@
  */
 
 
-import "@babel/polyfill";
 import { Renderer } from "./renderer";
 import * as common from "../common/common";
 import * as graphic from "./graphic";

@@ -1,4 +1,3 @@
-import "@babel/polyfill";
 import * as fonts from "./fonts";
 import * as petalumaFonts from "./fonts_petaluma";
 import * as petalumaTextFonts from "./petaluma_text_fonts";
