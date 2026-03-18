@@ -1,9 +1,8 @@
-dist/*.html
-dist/lib
+dist/
 node_modules/
 materials/
 release/
-.DS_Sotre
+.DS_Store
+**/.DS_Store
 test/screenshot
 report.html
-
