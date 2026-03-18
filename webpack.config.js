@@ -12,7 +12,7 @@ module.exports = {
   watchOptions: {
     ignored: /node_modules/
   },
-  entry: "./src/index.js",
+  entry: "./src/index.ts",
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'fumen.js',
@@ -20,6 +20,9 @@ module.exports = {
     libraryTarget: 'umd'
   },
   devtool: "source-map",
+  resolve: {
+    extensions: [".ts", ".js", ".json"]
+  },
   module: {
     rules: [
       /*{
@@ -32,13 +35,17 @@ module.exports = {
         }
       },*/
       {
-        test: /\.js$/,
+        test: /\.[jt]s$/,
         use: [
           {
             loader: "babel-loader",
             options: {
               presets: [
-                "@babel/preset-env"
+                ["@babel/preset-env", {
+                  targets: "defaults",
+                  bugfixes: true
+                }],
+                "@babel/preset-typescript"
               ]
             }
           }

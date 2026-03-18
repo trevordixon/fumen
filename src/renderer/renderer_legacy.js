@@ -1,4 +1,3 @@
-import "@babel/polyfill";
 import * as common from "../common/common";
 import * as graphic from "./graphic";
 
