@@ -1,4 +1,4 @@
-import { parseFumen } from "./parser-service";
+import { parseFumen, parseWithDiagnostics } from "./parser-service";
 import { createRenderer, DefaultRendererCompat } from "./renderer-service";
 import type {
   ParseOptions,
@@ -6,12 +6,20 @@ import type {
   RendererFacade,
   RendererOptions,
   RenderTarget,
+  SyntaxToken,
   TrackLike
 } from "./types";
 import { Parser as LegacyParser } from "../parser/parser";
+import { tokenizeFumen } from "./tokenizer";
 
 export function parse(code: string, options: ParseOptions = {}): ParseResult {
   return parseFumen(code, options);
+}
+
+export { parseWithDiagnostics };
+
+export function tokenize(code: string): readonly SyntaxToken[] {
+  return tokenizeFumen(code);
 }
 
 export function createFumenRenderer(
@@ -33,7 +41,11 @@ export class ParserCompat {
   }
 
   parseWithDiagnostics(code: string, options: ParseOptions = {}): ParseResult {
-    return parseFumen(code, options);
+    return parseWithDiagnostics(code, options);
+  }
+
+  tokenize(code: string): readonly SyntaxToken[] {
+    return tokenizeFumen(code);
   }
 }
 

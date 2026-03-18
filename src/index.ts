@@ -1,17 +1,30 @@
 
 export {
   parse,
+  parseWithDiagnostics,
+  tokenize,
   createFumenRenderer,
   ParserCompat as Parser,
   DefaultRendererCompat as DefaultRenderer
 } from "./api/public-api";
+export {
+  toMonacoMarkers,
+  registerFumenLanguage,
+  analyzeAndUpdateMonacoModel
+} from "./api/monaco";
 
 export type {
+  ParseMode,
   ParseOptions,
   ParseResult,
   ParserDiagnostic,
+  ParserDiagnosticRelatedInfo,
   Position,
   SourceSpan,
+  SyntaxToken,
+  SyntaxTokenKind,
+  MonacoMarkerDataLike,
+  MonacoNamespaceLike,
   RendererFacade,
   RendererOptions,
   RenderResult,

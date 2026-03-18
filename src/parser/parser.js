@@ -46,25 +46,41 @@ export class Parser {
     /**
      * Parser class for fumen markdown code
      */
-    constructor(error_msg_callback) {
+    constructor(error_msg_callback, options) {
         this.context = { line: 0, char: 0 };
         this.error_msg_callback = error_msg_callback;
+        this.options = options || {};
+        this.lastError = null;
     }
 
     onParseError(msg) {
-        var errormsg = "Parse error on Line " + this.context.line + " : " + msg;
-        console.log(errormsg);
-        console.trace();
+        var line = (this.context.line || 0) + 1;
+        var column = (this.context.char || 0) + 1;
+        var errormsg = "Parse error on Line " + line + " : " + msg;
+        this.lastError = {
+            code: msg,
+            message: errormsg,
+            line: line,
+            column: column
+        };
+        if (!this.options || !this.options.silentErrors) {
+            console.log(errormsg);
+            console.trace();
+        }
         if (this.error_msg_callback) {
-            this.error_msg_callback(errormsg);
+            this.error_msg_callback(errormsg, this.lastError);
         } else {
             console.warn(errormsg);
         }
 
-        throw "Parser Error";
+        throw new Error(errormsg);
     }
 
     nextToken(s, dont_skip_spaces) {
+        if (this.context && typeof this.context.source_length == "number") {
+            this.context.offset = this.context.source_length - s.length;
+            this.context.char = this.context.offset - (this.context.line_start_offset || 0);
+        }
         let word_def = WORD_DEFINIITON_GENERAL;
 
         var skipped_spaces = 0;
@@ -851,7 +867,9 @@ export class Parser {
             }
             return { block:block, s:s, end_of_rg:end_of_rg};
         }catch(e){
-            console.error(e);
+            if (!this.options || !this.options.silentErrors) {
+                console.error(e);
+            }
             return null;
         }
     }
@@ -909,6 +927,10 @@ export class Parser {
 
             this.context = {
                 line: 0,
+                char: 0,
+                offset: 0,
+                source_length: code.length,
+                line_start_offset: 0,
                 contiguous_line_break: 0,
                 prev_measure: null // Refernce to the previous measure for the backward affection elements such as syncopation
             };
@@ -920,6 +942,8 @@ export class Parser {
                     break;
                 }else if (r.type == TOKEN_NL) {
                     this.context.line += 1;
+                    this.context.line_start_offset = this.context.source_length - r.s.length;
+                    this.context.char = 0;
                     this.context.contiguous_line_break += 1;
                 } else if(r.type == TOKEN_BACK_SLASH){
                     // Expect TOKEN_NL 
@@ -927,6 +951,8 @@ export class Parser {
                     r = this.nextToken(r.s);
                     if(r.type != TOKEN_NL) this.onParseError("INVALID CODE DETECTED AFTER BACK SLASH");
                     this.context.line += 1;
+                    this.context.line_start_offset = this.context.source_length - r.s.length;
+                    this.context.char = 0;
                     //track.appendChild(new common.RawSpaces(r.sss));
                     //track.appendChild(new common.RawSpaces(r.token)); 
                     // Does not count as line break
@@ -979,7 +1005,9 @@ export class Parser {
 
             return track;
         }catch(e){
-            console.error(e);
+            if (!this.options || !this.options.silentErrors) {
+                console.error(e);
+            }
             return null;
         }
     }

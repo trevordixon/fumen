@@ -10,25 +10,36 @@ export interface SourceSpan {
 }
 
 export type DiagnosticSeverity = "error" | "warning" | "info";
+export type ParseMode = "strict" | "tolerant";
+
+export interface ParserDiagnosticRelatedInfo {
+  readonly message: string;
+  readonly span: SourceSpan;
+}
 
 export interface ParserDiagnostic {
   readonly code: string;
   readonly severity: DiagnosticSeverity;
   readonly message: string;
   readonly span: SourceSpan;
+  readonly related?: readonly ParserDiagnosticRelatedInfo[];
 }
 
 export type TrackLike = Record<string, unknown>;
 
 export interface ParseResult {
   readonly ok: boolean;
+  readonly ast: TrackLike | null;
   readonly track: TrackLike | null;
   readonly diagnostics: readonly ParserDiagnostic[];
+  readonly tokens?: readonly SyntaxToken[];
 }
 
 export interface ParseOptions {
   readonly fileName?: string;
   readonly emitDiagnostics?: boolean;
+  readonly mode?: ParseMode;
+  readonly includeTokens?: boolean;
 }
 
 export interface RenderTargetProvider {
@@ -56,9 +67,20 @@ export interface RendererFacade {
 export type SyntaxTokenKind =
   | "section"
   | "directive"
+  | "directive-value"
   | "chord"
+  | "chord-root"
+  | "chord-quality"
+  | "chord-bass"
   | "barline"
+  | "repeat"
+  | "duration"
+  | "tie"
+  | "rest"
+  | "operator"
   | "comment"
+  | "string"
+  | "number"
   | "lyric"
   | "text"
   | "unknown";
@@ -71,4 +93,41 @@ export interface SyntaxToken {
 
 export interface SyntaxTokenProvider {
   tokenize(code: string): readonly SyntaxToken[];
+}
+
+export interface MonacoRangeLike {
+  readonly startLineNumber: number;
+  readonly startColumn: number;
+  readonly endLineNumber: number;
+  readonly endColumn: number;
+}
+
+export interface MonacoMarkerDataLike extends MonacoRangeLike {
+  readonly severity: number;
+  readonly message: string;
+  readonly code?: string;
+  readonly source?: string;
+}
+
+export interface MonacoModelLike {
+  readonly uri: unknown;
+}
+
+export interface MonacoEditorLike {
+  setModelMarkers(
+    model: MonacoModelLike,
+    owner: string,
+    markers: readonly MonacoMarkerDataLike[]
+  ): void;
+}
+
+export interface MonacoLanguageLike {
+  register(definition: { readonly id: string }): void;
+  setMonarchTokensProvider(languageId: string, provider: unknown): void;
+  setLanguageConfiguration(languageId: string, config: unknown): void;
+}
+
+export interface MonacoNamespaceLike {
+  readonly languages: MonacoLanguageLike;
+  readonly editor: MonacoEditorLike;
 }

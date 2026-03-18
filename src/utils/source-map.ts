@@ -39,6 +39,15 @@ export function positionAt(index: SourceMapIndex, offset: number): Position {
   };
 }
 
+export function offsetAt(index: SourceMapIndex, line: number, column: number): number {
+  const boundedLine = Math.max(1, Math.min(line, index.lineStartOffsets.length));
+  const lineStart = index.lineStartOffsets[boundedLine - 1] ?? 0;
+  const lineEnd = index.lineStartOffsets[boundedLine] ?? index.code.length;
+  const maxColumn = Math.max(1, lineEnd - lineStart + 1);
+  const boundedColumn = Math.max(1, Math.min(column, maxColumn));
+  return lineStart + boundedColumn - 1;
+}
+
 export function spanAt(index: SourceMapIndex, start: number, end: number): SourceSpan {
   const safeStart = Math.max(0, Math.min(start, index.code.length));
   const safeEnd = Math.max(safeStart, Math.min(end, index.code.length));
@@ -46,4 +55,11 @@ export function spanAt(index: SourceMapIndex, start: number, end: number): Sourc
     start: positionAt(index, safeStart),
     end: positionAt(index, safeEnd)
   };
+}
+
+export function spanForLine(index: SourceMapIndex, line: number): SourceSpan {
+  const boundedLine = Math.max(1, Math.min(line, index.lineStartOffsets.length));
+  const lineStart = index.lineStartOffsets[boundedLine - 1] ?? 0;
+  const lineEnd = index.lineStartOffsets[boundedLine] ?? index.code.length;
+  return spanAt(index, lineStart, lineEnd);
 }

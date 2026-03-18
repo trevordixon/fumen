@@ -56,7 +56,7 @@ if (!parsed.ok) {
   console.error(parsed.diagnostics);
 } else {
   const renderer = createFumenRenderer(document.getElementById("canvas"));
-  await renderer.render(parsed.track, { music_font: "petaluma" });
+  await renderer.render(parsed.ast ?? parsed.track, { music_font: "petaluma" });
 }
 ```
 
@@ -66,6 +66,69 @@ Legacy runtime classes remain available for compatibility:
 import { Parser, DefaultRenderer } from "fumen";
 // Same behavior as Fumen.Parser / Fumen.DefaultRenderer in UMD.
 ```
+
+## Monaco Integration
+
+Use the parser in tolerant mode during editing to get precise diagnostics and a token stream:
+
+```javascript
+import {
+  parseWithDiagnostics,
+  tokenize,
+  registerFumenLanguage,
+  toMonacoMarkers,
+  analyzeAndUpdateMonacoModel
+} from "fumen";
+
+const parsed = parseWithDiagnostics(code, {
+  mode: "tolerant",
+  emitDiagnostics: true,
+  includeTokens: true
+});
+
+// parsed.ast: best-effort AST (partial when invalid)
+// parsed.track: strict full parse result, null when invalid
+// parsed.diagnostics: typed spans (line/column/offset)
+// parsed.tokens: syntax tokens when includeTokens=true
+```
+
+Monaco wiring:
+
+```javascript
+const languageId = registerFumenLanguage(monaco);
+monaco.editor.setModelLanguage(model, languageId);
+
+const result = analyzeAndUpdateMonacoModel(monaco, model, { mode: "tolerant" });
+// Markers are already pushed by analyzeAndUpdateMonacoModel.
+
+// Or do it manually:
+const manual = parseWithDiagnostics(model.getValue(), { mode: "tolerant" });
+monaco.editor.setModelMarkers(model, "fumen", toMonacoMarkers(manual.diagnostics));
+```
+
+Diagnostics use stable codes (examples): `FUMEN001`..`FUMEN012`.
+Key parser options:
+
+- `mode`: `"tolerant"` (default) or `"strict"`
+- `emitDiagnostics`: defaults to `true`
+- `includeTokens`: defaults to `false`
+
+Common diagnostic codes:
+
+- `FUMEN001`: unexpected top-level token
+- `FUMEN002`: plain-string parsing failure
+- `FUMEN003`: invalid token detected
+- `FUMEN005`: invalid `%VARIABLE` assignment syntax
+- `FUMEN010`: directive missing `=`
+- `FUMEN011`: section missing closing `]`
+- `FUMEN012`: unterminated quote literal
+
+Tokenizer kinds emitted by `tokenize()` / `includeTokens`:
+
+- `section`, `directive`, `directive-value`
+- `barline`, `repeat`, `operator`, `comment`
+- `chord-root`, `chord-quality`, `chord-bass`, `rest`, `duration`, `tie`
+- `string`, `number`, `text`, `unknown`
 
 ## Music Fonts
 
