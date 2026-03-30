@@ -128,7 +128,11 @@ export class Renderer {
                 } else if (e instanceof common.Segno) {
                     header_elements.push(e);
                 } else if (e instanceof common.Coda) {
-                    header_elements.push(e);
+                    if (body_elements.length > 0 || measure_wide_elements.length > 0 || simile_objs.length > 0) {
+                        footer_elements.push(e);
+                    } else {
+                        header_elements.push(e);
+                    }
                 } else if (e instanceof common.ToCoda) {
                     footer_elements.push(e);
                 } else if (e instanceof common.Fine) {

@@ -34,7 +34,7 @@ import { getMusicFontProfile } from "./music_font_profiles";
  * @property {String} [music_font="bravura"] Music font selector. "bravura" and "petaluma" are built-in options, and "custom" uses music_font_data.
  * @property {Object} [music_font_data] Custom music glyph set keyed by glyph names (e.g. "uniE0A2"), each with at least dataURL.
  * @property {String} [minor_chord_style="minus"] Minor triad marker style: "minus" renders `-`, "m" renders lowercase `m`.
- * @property {int} [section_margin_top=0] Extra vertical space before rows that start a rehearsal group (section).
+ * @property {int} [section_margin_top=0] Extra vertical space before rows that start a rehearsal group (section) or coda sign.
  */
 var SR_RENDER_PARAM = {
     // Paper setting
@@ -87,7 +87,7 @@ var SR_RENDER_PARAM = {
     row_height          : 28, // Basic height of the measure when no rs, mu and ml area is drawn
     base_body_height    : 28, // Height in body area (not applicable for RS area) used for simile and rest rendering. Recommended to keep this value irrespective of row_height.
     row_margin          : 4, // Margin between next y_base and lower edge of Measure Lower Area
-    section_margin_top  : 0, // Additional gap before section-start rows (rows with rehearsal mark)
+    section_margin_top  : 0, // Additional gap before section-start rows (rows with rehearsal mark or starting coda sign)
     rs_area_height      : 24, // Rhythm Slashes Area // 
     rm_area_height      : 15, // Rehearsal Mark Area
     mu_area_height      : 15, // Measure Upper Area ( Repeat signs area )
@@ -1435,6 +1435,7 @@ export class DefaultRenderer extends Renderer {
 
         // Screening of y-axis areas
         let rg_mark_detected = false;
+        let row_start_coda_detected = false;
         let fixed_mu_elem_detected = false;
         for (let ml = 0; ml < row_elements_list.length; ++ml) {
             var m = row_elements_list[ml];
@@ -1461,6 +1462,9 @@ export class DefaultRenderer extends Renderer {
                 ){
                     yprof.mu.detected = true;
                     fixed_mu_elem_detected = true;
+                    if (ml === 0 && e instanceof common.Coda) {
+                        row_start_coda_detected = true;
+                    }
                 } else if (e instanceof common.MeasureBoundary) {
                     yprof.ml.detected =
                     yprof.ml.detected ||
@@ -1503,7 +1507,10 @@ export class DefaultRenderer extends Renderer {
         }
 
         const sectionMarginTop = (typeof param.section_margin_top === "number") ? param.section_margin_top : 0;
-        if(rg_mark_detected && prev_measure != null && sectionMarginTop !== 0 && !suppress_section_margin){
+        if((rg_mark_detected || row_start_coda_detected) &&
+            prev_measure != null &&
+            sectionMarginTop !== 0 &&
+            !suppress_section_margin){
             y_base += sectionMarginTop;
         }
 
@@ -1647,6 +1654,8 @@ export class DefaultRenderer extends Renderer {
                     meas_fixed_width += r.width;
                     all_fixed_width_details.push({type:"fixed", f:r.width});
                     // eslint-disable-next-line no-empty
+                } else if (e instanceof common.Coda) {
+                    // End-anchored musical signs do not reserve extra footer width in screening.
                 } else if (e instanceof common.DaCapo) {
                     // eslint-disable-next-line no-empty
                 } else if (e instanceof common.DalSegno) {
@@ -2347,6 +2356,17 @@ export class DefaultRenderer extends Renderer {
                     x += e.renderprop.w;
                     if(r.bb) this.hitManager.add(paper, r.bb, e);
                     if(r.bb2) this.hitManager.add(paper, r.bb2, e);
+                } else if (e instanceof common.Coda) {
+                    let r = this.drawCoda(
+                        paper,
+                        param,
+                        x,
+                        repeat_mark_y_base,
+                        "rb",
+                        e,
+                        param.base_font_size
+                    );
+                    this.hitManager.add(paper, r.bb, e);
                 } else if (e instanceof common.DaCapo) {
                     let r = graphic.canvasText(
                         paper,
