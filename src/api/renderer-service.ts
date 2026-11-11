@@ -1,5 +1,6 @@
 import { DefaultRenderer as LegacyDefaultRenderer } from "../renderer/default_renderer";
 import type {
+  RenderedPage,
   RenderResult,
   RendererFacade,
   RendererOptions,
@@ -30,8 +31,9 @@ class LegacyBackedRendererFacade implements RendererFacade {
     track: TrackLike,
     params?: Record<string, unknown>
   ): Promise<RenderResult> {
-    await this.renderer.render(track, mergeParams(this.defaultParams, params));
-    return { ok: true };
+    const result: unknown = await this.renderer.render(track, mergeParams(this.defaultParams, params));
+    const pages = renderedPages(result);
+    return pages !== undefined ? { ok: true, pages } : { ok: true };
   }
 
   getElementsByPosition(
@@ -40,6 +42,16 @@ class LegacyBackedRendererFacade implements RendererFacade {
   ): Array<{ element: unknown; bb: { get(): { x: number; y: number; w: number; h: number } } }> {
     return this.renderer.getElementsByPosition(canvas, coord);
   }
+}
+
+function renderedPages(result: unknown): RenderedPage[] | undefined {
+  if (typeof result !== "object" || result === null || !("pages" in result)) return undefined;
+  const pages = result.pages;
+  if (!Array.isArray(pages)) return undefined;
+  return pages.map((page: unknown) => {
+    const rows = typeof page === "object" && page !== null && "rows" in page ? page.rows : 0;
+    return { rows: typeof rows === "number" ? rows : 0 };
+  });
 }
 
 export function createRenderer(

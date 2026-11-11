@@ -37,10 +37,12 @@ var TOKEN_ATMARK = 40; // @
 var TOKEN_COLON = 41; // :
 var TOKEN_PERIOD = 42; // .
 
-var WORD_DEFINIITON_GENERAL = /^(\w[\w¥.,\-+#:]*)/;
+// ^, Δ, ø and ° appear in common chord spellings (C^7, CΔ7, Cø, Co7 as C°7); `C^7` used to
+// stop the whole chart with INVALID_TOKEN_DETECTED.
+var WORD_DEFINIITON_GENERAL = /^(\w[\w¥.,\-+#:^Δø°]*)/;
 var WORD_DEFINITION_IN_REHARSAL_MARK = /^[^[\]]*/;
 var WORD_DEFINITION_IN_LOOP_IND_GENERIC = /^[^[\]]*/;
-var WORD_DEFINITION_CHORD_SYMBOL = /^[\w.,\-+#/():~]*/;
+var WORD_DEFINITION_CHORD_SYMBOL = /^[\w.,\-+#/():~^Δø°]*/;
 
 export class Parser {
     /**
@@ -104,6 +106,15 @@ export class Parser {
             var plain_str = "";
             s = s.substr(1);
             while (s.length > 0 && s[0] != quote) {
+                // Backslash escapes, so text can contain its own delimiter:
+                //   \" \' \` -> that literal quote,  \\ -> a literal backslash.
+                // Any other backslash sequence is left alone (kept verbatim) so existing
+                // charts that contain a plain backslash keep parsing exactly as before.
+                if (s[0] == "\\" && s.length > 1 && (s[1] == quote || s[1] == "\\")) {
+                    plain_str += s[1];
+                    s = s.substr(2);
+                    continue;
+                }
                 plain_str += s[0];
                 s = s.substr(1);
             }
@@ -769,7 +780,7 @@ export class Parser {
             var loop_cnt = 0;
 
             var block = new common.Block();
-            var current_align = "expand";
+            var current_align = "default";
 
             this.context.contiguous_line_break = 0; // This should be done only if NL is really consumed.
 
@@ -789,7 +800,7 @@ export class Parser {
                 }else if (r.type == TOKEN_NL) {
                     this.context.line += 1;
                     this.context.contiguous_line_break += 1;
-                    current_align = "expand"; // default is expand
+                    current_align = "default";
                     //if(this.context.contiguous_line_break >= 2) break; Do not break here. If the first non NL element is found, then break.
                 } else if(r.type == TOKEN_BACK_SLASH){
                     if(this.context.contiguous_line_break >= 2) break;
@@ -806,8 +817,14 @@ export class Parser {
                     current_align = "right";
                 }else if(r.type == TOKEN_BRACKET_LA){
                     if(this.context.contiguous_line_break >= 2) break;
-                    // Right aligh indicoator > which is outside measure
-                    current_align = "left";
+                    // Left align indicator < or explicit expand indicator <>
+                    let ra = this.nextToken(r.s, true);
+                    if(ra.type == TOKEN_BRACKET_RA && ra.ss == 0){
+                        current_align = "expand";
+                        r.s = ra.s;
+                    }else{
+                        current_align = "left";
+                    }
                 } else if (r.type == TOKEN_BRACKET_LS) {
                     // Next rehearsal mark detected.
                     // Do not consume.

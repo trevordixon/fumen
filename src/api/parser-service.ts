@@ -106,27 +106,44 @@ function buildLegacyDiagnostic(
   };
 }
 
-function firstUnescapedQuoteIndex(line: string, quote: string): number | null {
-  let openIndex: number | null = null;
+interface UnterminatedString {
+  readonly quote: string;
+  readonly index: number;
+}
+
+// Scans a line once, tracking which delimiter is currently open, and reports a string that
+// is still open at end of line. Checking each quote character independently (the previous
+// behaviour) mis-read any quote nested inside a differently-quoted string: `"Don't stop"`
+// looked like an unterminated `'` literal, so valid text containing an apostrophe was
+// rejected by strict parsing. Backslash escapes are honoured, matching the tokenizer.
+function unterminatedStringOnLine(line: string): UnterminatedString | null {
+  let openQuote: string | null = null;
+  let openIndex = -1;
   for (let i = 0; i < line.length; i += 1) {
     const ch = line[i];
     if (ch === undefined) {
       break;
     }
-    if (ch !== quote) {
+    if (openQuote !== null && ch === "\\") {
+      const next = i + 1 < line.length ? line[i + 1] : undefined;
+      if (next === openQuote || next === "\\") {
+        i += 1;
+      }
       continue;
     }
-    const prev = i > 0 ? line[i - 1] : "";
-    if (prev === "\\") {
+    if (openQuote === null) {
+      if (ch === "\"" || ch === "'" || ch === "`") {
+        openQuote = ch;
+        openIndex = i;
+      }
       continue;
     }
-    if (openIndex === null) {
-      openIndex = i;
-    } else {
-      openIndex = null;
+    if (ch === openQuote) {
+      openQuote = null;
+      openIndex = -1;
     }
   }
-  return openIndex;
+  return openQuote === null ? null : { quote: openQuote, index: openIndex };
 }
 
 function scanLineDiagnostics(code: string): readonly ParserDiagnostic[] {
@@ -157,19 +174,15 @@ function scanLineDiagnostics(code: string): readonly ParserDiagnostic[] {
       });
     }
 
-    const quoteChecks: readonly string[] = ["\"", "'", "`"];
-    for (const quote of quoteChecks) {
-      const startQuote = firstUnescapedQuoteIndex(line, quote);
-      if (startQuote !== null) {
-        const absoluteStart = (sourceIndex.lineStartOffsets[lineIndex] ?? 0) + startQuote;
-        diagnostics.push({
-          code: "FUMEN012",
-          severity: "error",
-          message: `Unterminated ${quote} string literal`,
-          span: spanAt(sourceIndex, absoluteStart, absoluteStart + 1)
-        });
-        break;
-      }
+    const unterminated = unterminatedStringOnLine(line);
+    if (unterminated !== null) {
+      const absoluteStart = (sourceIndex.lineStartOffsets[lineIndex] ?? 0) + unterminated.index;
+      diagnostics.push({
+        code: "FUMEN012",
+        severity: "error",
+        message: `Unterminated ${unterminated.quote} string literal`,
+        span: spanAt(sourceIndex, absoluteStart, absoluteStart + 1)
+      });
     }
   }
 

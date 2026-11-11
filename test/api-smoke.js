@@ -10,6 +10,10 @@ function invalidCode() {
   return `%TITLE="Prelude"\n| C | F |\n%TITLE "Broken"\n[Verse 1\n| C:4 'oops |\n%PARAM {"row_margin": 8}`;
 }
 
+function rowAlignCode() {
+  return `[A]\n| C |\n<>| D |\n>| E |`;
+}
+
 async function run() {
   const originalWarn = console.warn;
   console.warn = (...args) => {
@@ -31,6 +35,14 @@ async function run() {
   const legacyParser = new umd.Parser();
   const legacyTrack = legacyParser.parse(sampleCode());
   assert.ok(legacyTrack, "Legacy parser failed to parse sample code");
+
+  const alignTrack = legacyParser.parse(rowAlignCode());
+  assert.ok(alignTrack, "Legacy parser failed to parse row alignment sample");
+  const alignMeasures = alignTrack.childNodes[0].childNodes[0].childNodes;
+  assert.equal(alignMeasures[0].align, "default", "Bare rows should parse as default alignment");
+  assert.equal(alignMeasures[1].align, "expand", "<> rows should parse as explicit expand alignment");
+  assert.equal(alignMeasures[2].align, "right", "> rows should parse as explicit right alignment");
+  assert.equal(alignTrack.exportCode().includes("<>| D |"), true, "Round-trip export should preserve <> align marker");
 
   const esmPath = pathToFileURL(path.resolve(__dirname, "../dist/esm/index.mjs")).href;
   const esm = await import(esmPath);
@@ -54,6 +66,82 @@ async function run() {
   assert.ok(parseResult.track, "ESM parse() did not return a track");
   assert.ok(parseResult.ast, "ESM parse() did not return ast");
   assert.equal(parseResult.diagnostics.length, 0, "Valid parse emitted diagnostics");
+
+  // Regression: a double-quoted "at chord level" text annotation (docs/text.md) must
+  // round-trip losslessly through parse -> exportCode, even when the text happens to
+  // start with a chord-root letter (A-G). Chord.init()'s validity regex used to accept a
+  // *partial* match (e.g. "Bridge" -> root "B" + an incidental "with rest" `r`) as a
+  // fully valid chord, silently discarding the unmatched remainder ("idge") with no
+  // parse error -- i.e. `parse('| "Bridge" C |').track.exportCode()` produced '| B C |'.
+  const quotedTextRegressionCases = ["Bridge", "Break", "Bass", "Crescendo", "Flow"];
+  for (const word of quotedTextRegressionCases) {
+    const source = `| "${word}" C |`;
+    const result = esm.parse(source);
+    assert.equal(result.ok, true, `Expected ${JSON.stringify(source)} to parse ok`);
+    const exported = result.track.exportCode();
+    assert.ok(
+      exported.includes(`"${word}"`),
+      `Expected double-quoted text "${word}" to round-trip losslessly, got: ${JSON.stringify(exported)}`
+    );
+  }
+
+  // Regression: quoted text must be able to contain its own delimiter. The tokenizer now
+  // understands \" \' \` and \\ inside quoted strings, and Comment/Lyric/quoted-Chord
+  // export escapes them, so text like "Don't stop" or 'Say "hi"' round-trips instead of
+  // terminating the string early (which previously made the whole chart unparseable).
+  const escapeRoundTripCases = [
+    { source: `| "Don't stop" C |`, text: "Don't stop" },
+    { source: `| 'Say "hi"' C |`, text: 'Say "hi"' },
+    { source: `| 'He said "don\\'t"' C |`, text: 'He said "don\'t"' },
+    { source: `| "It\\"s here" C |`, text: 'It"s here' },
+    { source: '| `don\\`t` C |', text: 'don`t' },
+    { source: `| 'back\\\\slash' C |`, text: 'back\\slash' },
+  ];
+  for (const { source, text } of escapeRoundTripCases) {
+    const result = esm.parse(source);
+    assert.equal(result.ok, true, `Expected ${JSON.stringify(source)} to parse ok`);
+    const exported = result.track.exportCode();
+    const reparsed = esm.parse(exported);
+    assert.equal(reparsed.ok, true, `Expected re-export of ${JSON.stringify(source)} to re-parse, got ${JSON.stringify(exported)}`);
+    assert.equal(
+      reparsed.track.exportCode(),
+      exported,
+      `Expected ${JSON.stringify(source)} to reach a stable export, got ${JSON.stringify(exported)}`
+    );
+    // The text itself must survive verbatim in the exported code (escaped form).
+    const expectedFragments = [
+      `"${text.split('\\').join('\\\\').split('"').join('\\"')}"`,
+      `'${text.split('\\').join('\\\\').split("'").join("\\'")}'`,
+      '`' + text.split('\\').join('\\\\').split('`').join('\\`') + '`',
+    ];
+    assert.ok(
+      expectedFragments.some((fragment) => exported.includes(fragment)),
+      `Expected exported code to carry ${JSON.stringify(text)} escaped, got: ${JSON.stringify(exported)}`
+    );
+  }
+
+  // Same for %VARIABLE values: a title containing a double quote must survive export.
+  const titleWithQuotes = esm.parse(`%TITLE="Say \\"Hello\\""\n| C |`);
+  assert.equal(titleWithQuotes.ok, true, "Expected a title containing escaped quotes to parse");
+  const titleExport = titleWithQuotes.track.exportCode();
+  assert.ok(
+    titleExport.includes('%TITLE="Say \\"Hello\\""'),
+    `Expected the title to export re-escaped, got: ${JSON.stringify(titleExport)}`
+  );
+  assert.equal(
+    esm.parseWithDiagnostics(titleExport, { mode: "strict" }).ok,
+    true,
+    "Expected the re-exported title to strict-parse"
+  );
+
+  // Regression: a syncopation mark (`<:8`) plants an invisible shadow chord in the previous
+  // measure; Measure.exportCode() used to emit it as an empty token, so `| Dm7 G7 |` came
+  // back as `| Dm7 G7  |` after any re-export. Exports must be whitespace-stable.
+  const syncSource = "| Dm7 G7 | CM7:2 <:8 F7:2 |";
+  const syncExport = esm.parse(syncSource).track.exportCode();
+  assert.ok(!/ {2}/.test(syncExport), `Expected no double spaces in re-export, got ${JSON.stringify(syncExport)}`);
+  assert.ok(syncExport.includes("| Dm7 G7 |"), `Expected the untouched measure to round-trip, got ${JSON.stringify(syncExport)}`);
+  assert.equal(esm.parse(syncExport).track.exportCode(), syncExport, "Export must be idempotent");
 
   const parserCompat = new esm.Parser();
   const compatTrack = parserCompat.parse(sampleCode());
@@ -134,6 +222,14 @@ async function run() {
   assert.equal(analyzed.ok, false, "Expected analyzed invalid model to be non-ok");
   assert.ok(analyzed.diagnostics.length > 0, "Expected analyzed diagnostics");
   assert.equal(markerWrites.length, 1, "Expected marker write from analyze helper");
+
+  // Transposed spellings read like a lead sheet: no Cb/Fb/E#/B# outside the keys that use them.
+  const Chord = umd.Chord;
+  assert.equal(Chord.getTranpsoedNote(1, "AUTO", "C", "B", "b"), "B", "Bb up a half step in C is B, not Cb");
+  assert.equal(Chord.getTranpsoedNote(1, "AUTO", "C", "E", "b"), "E", "Eb up a half step is E, not Fb");
+  assert.equal(Chord.getTranpsoedNote(6, "AUTO", "C", "F", ""), "Cb", "F in C moved to Gb is Cb (IV of Gb)");
+  assert.equal(Chord.getTranpsoedNote(2, "AUTO", "C", "G", ""), "A", "plain notes stay plain");
+
 
   console.warn = originalWarn;
   console.log("API smoke tests passed");

@@ -350,7 +350,7 @@ export class Measure extends Element{
         super();
 
         this.raw_new_line = false; // Raw "new line" mark. Maked when this is a second or later measure inside a rehearsal group after one ore more new lines in the fumen code
-        this.align = "expand"; // expand, left, right
+        this.align = "default"; // default, expand, left, right
 
         this.renderprop = {}; // Rendering information storage
     }
@@ -377,11 +377,17 @@ export class Measure extends Element{
         //if(this.raw_new_line) code += "\n"; // added at block export
         if(this.align == "left") code += "<";
         else if(this.align == "right") code += ">";
+        else if(this.align == "expand") code += "<>";
         this.childNodes.forEach(e=>{
             if(e instanceof MeasureBoundary){
                 if(!e.exportTarget) return "";
             }
-            code += (e.exportCode() + " ");
+            // A syncopation shadow chord (pushed into the previous measure by `<:n`) exports
+            // as "", so appending it blindly leaves a stray double space that changes the
+            // source on every re-export of an otherwise untouched measure.
+            const token = e.exportCode();
+            if(token === "") return;
+            code += (token + " ");
         });
         return code;
     }
@@ -526,15 +532,42 @@ export class Chord extends Element {
 
         this.note_group_list = null;
 
+        // "No chord" (N.C.): a chord of its own, drawn in the chord font and never transposed. It
+        // used to be kept as text, and written back to the source in quotes. NC and N.C work too;
+        // a duration (N.C.:4) gives it rhythm like any chord.
+        var nc = /^(?:N\.C\.?|NC)(?::(([\d_]+)(\.*)(~)?))?$/.exec(chord_str);
+        this.is_no_chord = !!nc;
+        if (nc) {
+            this.chord_name_str = "N.C.";
+            this.mid_elems = null;
+            if (nc[1]) {
+                this.note_group_list = [{ lengthIndicator: Chord.parseLengthIndicator(nc[1]), note_profiles: null }];
+            }
+            return;
+        }
+
         // Analyze Chord symbol
         var r = /^(((A|B|C|D|E|F|G)(#|b)?([^/r:]*))?(\/(A|B|C|D|E|F|G)(#|b)?)?)(r)?(:((([\d_]+)(\.*)(~)?)|(\(.*\))))?/;
-        var m = chord_str.match(r);
+        // 6/9 is one quality, not a chord over a bass note "9".
+        var match_str = chord_str.replace(/^([A-G][#b]?m?)6\/9/, "$169");
+        var m = match_str.match(r);
         //console.log(m);
         // [0] is entire matched string
 
         this.chord_name_str = null;
 
-        if (m && m[0] != "") {
+        // The chord-symbol regex above only anchors at the start (`^`), not the end, so
+        // without also requiring the match to consume the *entire* string, any string
+        // starting with a chord-root letter (A-G) that stops matching partway through
+        // (e.g. "Bridge" -> root "B" + the separate "with rest" `r` flag, leaving "idge"
+        // silently unconsumed and unrepresented anywhere) was accepted as a fully valid
+        // chord and everything after the matched prefix was discarded with no error.
+        // This is what let double-quoted standalone text ("Bridge", see docs/text.md)
+        // silently collapse to a single letter instead of round-tripping through
+        // exportCode(). Requiring full consumption makes any such input fall through to
+        // the `is_valid_chord = false` branch below, which preserves it verbatim as
+        // quoted literal text instead of guessing at (and truncating) a chord symbol.
+        if (m && m[0] != "" && m[0].length === match_str.length) {
             this.chord_name_str = m[1];
             this.note_base = m[3];
             this.sharp_flat = m[4];
@@ -545,6 +578,16 @@ export class Chord extends Element {
             this.mid_elems = null;
             if (this.mid_str !== undefined) {
                 var ret = Chord.parseChordMids(this.mid_str);
+                if (ret === null) {
+                    // Common lead-sheet spellings (maj7, -7, o7, ^7, ø) read as the ones
+                    // this parser knows (M7, m7, dim7, M7, m7b5), so they draw and transpose
+                    // as chords instead of being kept as text.
+                    var respelled = Chord.respellQuality(this.mid_str);
+                    if (respelled !== this.mid_str) {
+                        ret = Chord.parseChordMids(respelled);
+                        if (ret !== null) this.mid_str = respelled;
+                    }
+                }
                 if (ret !== null) {
                     this.mid_elems = ret[0];
                     this.mid_elem_objs = ret[1];
@@ -575,6 +618,17 @@ export class Chord extends Element {
             this.chord_name_str = this.chord_str;
             this.is_valid_chord = false;
         }
+    }
+
+    /** `maj7` → `M7`, `-7` → `m7`, `o7` → `dim7`, `^7`/`Δ` → `M7`, `ø` → `m7b5`, `m(maj7)` → `mM7`. */
+    static respellQuality(q) {
+        q = q.replace(/^[Δ^](?=\d)/, "maj").replace(/^[Δ^]$/, "M7").replace(/^[Δ^]/, "M7");
+        q = q.replace(/^(?:m|min|-)\(?(?:maj|Maj|MA|ma|M)(\d+)\)?/, "mM$1");
+        q = q.replace(/^(?:min|-)(?=\d|$|b|#|\(|sus|add)/, "m");
+        q = q.replace(/^(?:maj|Maj|MA|ma)(\d+)/, "M$1");
+        q = q.replace(/^[o°]7/, "dim7").replace(/^[o°]$/, "dim");
+        q = q.replace(/^ø7?/, "m7b5");
+        return q;
     }
 
     setException(exceptional_comment) {
@@ -640,6 +694,7 @@ export class Chord extends Element {
         if(this.is_valid_chord){
             // construct from the raw data.
             // Keep the original strign as much as possible.
+            if(this.is_no_chord) code += "N.C.";
             if(this.note_base) code += this.note_base;
             if(this.sharp_flat) code += this.sharp_flat;
             if(this.mid_elems) code += Chord.chordMidSerialize(this.mid_elems)[1];
@@ -673,7 +728,7 @@ export class Chord extends Element {
             return code;
             //return this.chord_str;
         }else{
-            return code+`"${this.chord_str}"`;
+            return code+quoteText(this.chord_str, '"');
         }
     }
 
@@ -805,8 +860,10 @@ export class Chord extends Element {
             return null;
         }
         function tension(ps){
-            let ds = ["omit3","omit5","add9","add2","#11","+11","b13","-13","#9","+9","b9","-9","+5","#5","-5","b5"];
-            let th = [ 4,      4,      3,     3,     1,    1,    1,    1,    1,   1,   1,   1,   1,   1,   1,   1  ]; // type and digit split pos
+            // "alt" (an altered dominant, C7alt) is a tension of its own, with nothing after it.
+            // add3/add4/add11/add13 too: iReal Pro's 7susadd3 is 7sus4(add3).
+            let ds = ["omit3","omit5","add11","add13","add9","add2","add3","add4","alt","#11","+11","b13","-13","#9","+9","b9","-9","+5","#5","-5","b5"];
+            let th = [ 4,      4,      3,      3,      3,     3,     3,     3,     3,    1,    1,    1,    1,    1,   1,   1,   1,   1,   1,   1,   1  ]; // type and digit split pos
             if(ps.length == 0) return null;
             let r = charStartsWithAmong(ps, ds);
             if(r){
@@ -915,7 +972,7 @@ export class Chord extends Element {
                     let serialize = [];
                     code += tensionlist(r.value, serialize);
                     for(let j=0; j<serialize.length; ++j){
-                        repl = {add:"add","+":"#","-":"b","#":"#","b":"b","omit":"omit"};
+                        repl = {add:"add","+":"#","-":"b","#":"#","b":"b","omit":"omit","alt":"alt"};
                         objholder.push({"type":"tension", value:repl[serialize[j].value], param:serialize[j].param}); 
                     }
                     break; 
@@ -1179,7 +1236,17 @@ export class Chord extends Element {
             }
         }
 
-        return newletter+acc;
+        // Cb, Fb, E# and B# are right on paper but hard to read on a lead sheet: spell them as
+        // B, E, F and C unless the target key itself uses them (Bbm7b5 up a half step was
+        // shown as Cbm7b5 rather than Bm7b5).
+        var plain = { "Cb": "B", "Fb": "E", "E#": "F", "B#": "C" };
+        var keys_using = { "Cb": ["Gb", "Cb"], "Fb": ["Cb"], "E#": ["F#", "C#"], "B#": ["C#"] };
+        var spelled = newletter + acc;
+        if (spelled in plain && keys_using[spelled].indexOf(target_maj_key) < 0) {
+            return plain[spelled];
+        }
+
+        return spelled;
         
     }
 
@@ -1561,6 +1628,21 @@ export class Fine extends Element {
  * Class represents a Comment
  * @extends Element
  */
+/**
+ * Quotes a text value for export, escaping its own delimiter (and backslashes) so the
+ * result tokenizes back to the identical string. The parser understands `\"`, `\'`, `` \` ``
+ * and `\\` inside quoted text; without escaping here, any text containing its delimiter
+ * exported code that fails to re-parse (or silently truncated at the inner quote).
+ * @param {string} value
+ * @param {string} quote one of " ' `
+ * @returns {string}
+ */
+export function quoteText(value, quote) {
+    const raw = value === null || value === undefined ? "" : String(value);
+    const escaped = raw.split("\\").join("\\\\").split(quote).join("\\" + quote);
+    return quote + escaped + quote;
+}
+
 export class Comment extends Element {
     constructor(comment, chorddep=null) {
         super();
@@ -1569,7 +1651,7 @@ export class Comment extends Element {
     }
     getElementName() { return "Comment"; }
     setCodeDependency(v){ this.chorddep = v; }
-    exportCode(){ return "'"+this.comment+"'"; } // TODO : quote considrtaion
+    exportCode(){ return quoteText(this.comment, "'"); }
     remove(){
         if(this.chorddep){
             this.chorddep.exceptinal_comment = null;
@@ -1592,7 +1674,7 @@ export class Lyric extends Element {
     }
     getElementName() { return "Lyric"; }
     setCodeDependency(v){ this.chorddep = v; }
-    exportCode(){ return "`"+this.lyric+"`"; } // TODO : quote considrtaion
+    exportCode(){ return quoteText(this.lyric, "`"); }
     remove(){
         if(this.chorddep){
             this.chorddep.lyric = null;
@@ -1650,7 +1732,8 @@ export class Variable extends Node {
         let vtype = typeof(this.value);
         let code = "%"+this.name+"=";
         if(vtype=="string")
-            code += `"${this.value}"`;
+            // Escape so a value containing `"` (a title like `Say "Hello"`) re-parses.
+            code += quoteText(this.value, '"');
         else if(vtype =="number")
             code += `${this.value}`;
         else if(isObject(this.value)){

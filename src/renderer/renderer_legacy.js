@@ -41,6 +41,11 @@ export class Renderer {
             bb: "b",
             BB: "B",
             fn: "f",
+            // A final barline followed by more bars on the same row (a Coda after the end, or
+            // rows reflowed to fit a narrow screen) used to be a hard error.
+            fs: "f",
+            fd: "f",
+            fb: "b",
             rr: "r",
             ns: "s",
             nd: "d",
@@ -303,10 +308,8 @@ export class Renderer {
         // elements in a measure
         for (var ei = 0; ei < elems.length; ++ei) {
             var e = elems[ei];
-            // no duration information
-            if (e.note_group_list === null) {
-                throw "SOMETHING WRONG WITH LENGTH INDICATOR SCREENING";
-            }
+            // note_group_list may be null when only some chords in the measure have explicit duration;
+            // generateBalkenElement handles this by returning a default slash element.
 
             let balken_element = e.renderprop.balken_element; // this is corresponds to single flex element
 
@@ -434,9 +437,20 @@ export class Renderer {
 
     generateBalkenElement(e, x, row_height, music_context)
     {
-       // no duration information
+        // no duration information — treat as a plain slash with quarter-note length
         if (e.note_group_list === null) {
-            throw "SOMETHING WRONG WITH LENGTH INDICATOR SCREENING";
+            return {
+                type: "slash",
+                numdot: 0,
+                chord_length: common.WHOLE_NOTE_LENGTH / 4,
+                notes_coord: {x:[], y:null},
+                note_value: 4,
+                has_tie: false,
+                pos_on_5lines: [4],
+                lengthIndicator: null,
+                sharp_flats: [],
+                renderprop: {}
+            };
         }
 
         let _5lines_intv = row_height / 4;
@@ -843,8 +857,8 @@ export class Renderer {
             //let ys = balkenGroup[gbi].balken_element.notes_coord[1]; // This is relative value to rs_y_base
             let e = balkenGroup[gbi].e;
             let group_y = [];
-            if(e instanceof common.Space || e instanceof common.Simile){
-                group_y.push(rs_y_base); // just dammy
+            if(e instanceof common.Space || e instanceof common.Simile || e.note_group_list === null){
+                group_y.push(rs_y_base + _5lines_intv * 2); // center (slash fallback)
             }else{
                 for (var ngi = 0; ngi < e.note_group_list.length; ++ngi) {
                     var ng = e.note_group_list[ngi];
@@ -1095,7 +1109,8 @@ export class Renderer {
 
         let last_chord_rest_idx  = common.findLastIndex(balken.groups, g=>(g.e instanceof common.Chord || g.e instanceof common.Rest));
 
-        let tuplet = balken.groups[first_chord_rest_idx].balken_element.lengthIndicator.renpu; // TODO : Space should be eliminated
+        const first_li = balken.groups[first_chord_rest_idx].balken_element.lengthIndicator;
+        let tuplet = first_li ? first_li.renpu : null; // TODO : Space should be eliminated
 
         if(!tuplet) return; // No tuplet.
 

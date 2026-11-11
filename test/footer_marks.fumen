@@ -1,0 +1,8 @@
+%TITLE="Footer marks"
+%SUB_TITLE="Two end-of-measure marks in one bar; time signatures after repeat dots"
+
+[A]
+||: (4/4) C | F | G | C :||
+| C | F | <D.S. al Coda> G <Coda> | C ||
+| C | F <to Coda> | G | C <Fine> ||
+||: C | F :||: (3/4) G | C :||

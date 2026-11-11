@@ -184,6 +184,15 @@ function tokenizeLine(
         if (c === undefined) {
           break;
         }
+        // Honour the same backslash escapes the parser accepts, so an escaped delimiter
+        // inside the text does not terminate the string token early.
+        if (c === "\\" && end + 1 < text.length) {
+          const next = text[end + 1];
+          if (next === quote || next === "\\") {
+            end += 2;
+            continue;
+          }
+        }
         if (c === quote) {
           end += 1;
           break;

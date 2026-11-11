@@ -34,7 +34,8 @@ import { getMusicFontProfile } from "./music_font_profiles";
  * @property {String} [music_font="bravura"] Music font selector. "bravura" and "petaluma" are built-in options, and "custom" uses music_font_data.
  * @property {Object} [music_font_data] Custom music glyph set keyed by glyph names (e.g. "uniE0A2"), each with at least dataURL.
  * @property {String} [minor_chord_style="minus"] Minor triad marker style: "minus" renders `-`, "m" renders lowercase `m`.
- * @property {int} [section_margin_top=0] Extra vertical space before rows that start a rehearsal group (section) or coda sign.
+ * @property {int} [section_margin_top=0] Extra vertical space before the first row of each new block, except at the top of a page.
+ * @property {String} [default_row_align="left"] Default alignment for rows without an explicit prefix: "left", "right", or "expand".
  */
 var SR_RENDER_PARAM = {
     // Paper setting
@@ -87,7 +88,7 @@ var SR_RENDER_PARAM = {
     row_height          : 28, // Basic height of the measure when no rs, mu and ml area is drawn
     base_body_height    : 28, // Height in body area (not applicable for RS area) used for simile and rest rendering. Recommended to keep this value irrespective of row_height.
     row_margin          : 4, // Margin between next y_base and lower edge of Measure Lower Area
-    section_margin_top  : 0, // Additional gap before section-start rows (rows with rehearsal mark or starting coda sign)
+    section_margin_top  : 0, // Additional gap before rows that start a new block
     rs_area_height      : 24, // Rhythm Slashes Area // 
     rm_area_height      : 15, // Rehearsal Mark Area
     mu_area_height      : 15, // Measure Upper Area ( Repeat signs area )
@@ -115,6 +116,7 @@ var SR_RENDER_PARAM = {
     on_bass_style           : "right", // right|below
     on_bass_below_y_offset  : 0,
     minor_chord_style       : "minus", // minus|m
+    default_row_align       : "left", // left|right|expand
     
     // Rhythm Shalsh / Notes rendering settings
     balken_width            : 3,
@@ -190,10 +192,12 @@ export class DefaultRenderer extends Renderer {
     }
 
     setoffsetparam(param){
-        if("y_offset" in param) param.y_offset_top    =  param.y_offset_top    || param.y_offset;
-        if("y_offset" in param) param.y_offset_bottom =  param.y_offset_bottom || param.y_offset;
-        if("x_offset" in param) param.x_offset_left   =  param.x_offset_left   || param.x_offset;
-        if("x_offset" in param) param.x_offset_right  =  param.x_offset_right  || param.x_offset;
+        // null/undefined fall back to the shared offset; an explicit 0 means no margin.
+        const or = (v, fallback) => (v === null || v === undefined) ? fallback : v;
+        if("y_offset" in param) param.y_offset_top    = or(param.y_offset_top,    param.y_offset);
+        if("y_offset" in param) param.y_offset_bottom = or(param.y_offset_bottom, param.y_offset);
+        if("x_offset" in param) param.x_offset_left   = or(param.x_offset_left,   param.x_offset);
+        if("x_offset" in param) param.x_offset_right  = or(param.x_offset_right,  param.x_offset);
     }
 
     getRenderParamForRun(param){
@@ -365,7 +369,7 @@ export class DefaultRenderer extends Renderer {
     }
 
     optimizeType2(row_elements_list, x_width_info, total_width, 
-        num_meas, num_meas_to_consider, reduced_meas_valid, room_per_elem_dist){
+        num_meas, num_meas_to_consider, reduced_meas_valid, room_per_elem_dist, param){
 
         // Equal division
         let room_per_meas_even_meas = this.roomPerMeasForEqualDivison(
@@ -393,13 +397,13 @@ export class DefaultRenderer extends Renderer {
             e.renderprop.meas_num_flexible_rooms = x_width_info[mi].meas_num_flexible_rooms;
         });
             
-        if(reduced_meas_valid && row_elements_list[0].align == "right")
+        if(reduced_meas_valid && this.resolveRowAlign(row_elements_list, param) == "right")
             row_elements_list[0].renderprop.left_margin = total_width / 
                 num_meas_to_consider * (num_meas_to_consider - num_meas);
     }
 
     optimizeType3(row_elements_list, x_width_info, total_width, 
-        num_meas, num_meas_to_consider, reduced_meas_valid){
+        num_meas, num_meas_to_consider, reduced_meas_valid, param){
         // https://docs.google.com/document/d/1oPmUvAF6-KTsQrEovYJgMZSDqlztp4pL-XVs8uee7A4/edit?usp=sharing
         // Here alpha=1 case is filtered at the first IF statement, then we only consider the case
         // where room when optimize_type = 0 is positive.
@@ -444,13 +448,13 @@ export class DefaultRenderer extends Renderer {
 
             row_total_width += x_width_info[mi].measure_width; 
         });
-        if(reduced_meas_valid && row_elements_list[0].align == "right")
+        if(reduced_meas_valid && this.resolveRowAlign(row_elements_list, param) == "right")
             row_elements_list[0].renderprop.left_margin = total_width - row_total_width;
         console.log("alpha = " + alpha);
     }
 
     optimizeType4(row_elements_list, x_width_info, total_width, 
-        num_meas, num_meas_to_consider, reduced_meas_valid, opt2_room_dist){
+        num_meas, num_meas_to_consider, reduced_meas_valid, opt2_room_dist, param){
         // https://docs.google.com/document/d/1oPmUvAF6-KTsQrEovYJgMZSDqlztp4pL-XVs8uee7A4/edit?usp=sharing
         // Here alpha=1 case is filtered at the first IF statement, then we only consider the case
         // where room when optimize_type = 0 is positive.
@@ -505,8 +509,80 @@ export class DefaultRenderer extends Renderer {
 
             row_total_width += x_width_info[mi].measure_width; 
         });
-        if(reduced_meas_valid && row_elements_list[0].align == "right")
+        if(reduced_meas_valid && this.resolveRowAlign(row_elements_list, param) == "right")
             row_elements_list[0].renderprop.left_margin = total_width - row_total_width;
+    }
+
+    resolveRowAlign(row_elements_list, param){
+        let align = row_elements_list[0].align;
+        if(align == "default"){
+            if(param.default_row_align == "right" || param.default_row_align == "expand"){
+                return param.default_row_align;
+            }
+            return "left";
+        }
+        return align;
+    }
+
+    collectForwardAlignedRowGroup(reharsal_x_width_info, start_row, param){
+        let group = [];
+        let base_num_meas = reharsal_x_width_info[start_row][0].length;
+        let row = start_row;
+
+        while (row < reharsal_x_width_info.length){
+            let row_elements_list = reharsal_x_width_info[row][0];
+            let row_num_meas = row_elements_list.length;
+            let row_align = this.resolveRowAlign(row_elements_list, param);
+
+            if(row === start_row){
+                group.push(reharsal_x_width_info[row]);
+                row += 1;
+                continue;
+            }
+
+            if(row_num_meas > base_num_meas){
+                base_num_meas = row_num_meas;
+                group.push(reharsal_x_width_info[row]);
+            }else if(row_num_meas === base_num_meas){
+                group.push(reharsal_x_width_info[row]);
+            }else if(row_align !== "expand"){
+                group.push(reharsal_x_width_info[row]);
+            }else{
+                break;
+            }
+            row += 1;
+        }
+
+        return {
+            group: group,
+            next_row: row,
+            base_num_meas: base_num_meas
+        };
+    }
+
+    getAlignedMeasureRefIndex(globalmi, row_elements_list, base_num_meas, param){
+        let mi_ref = globalmi;
+        let resolved_align = this.resolveRowAlign(row_elements_list, param);
+        if(row_elements_list.length < base_num_meas){
+            if(resolved_align == "right"){
+                if(globalmi >= (base_num_meas - row_elements_list.length) ){
+                    mi_ref = globalmi - (base_num_meas - row_elements_list.length);
+                }else{
+                    mi_ref = null;
+                }
+            }else if(resolved_align == "left"){
+                if(globalmi < row_elements_list.length){
+                    mi_ref = globalmi;
+                }else{
+                    mi_ref = null;
+                }
+            }else{
+                throw "Forward alignment process error";
+            }
+        }else if(row_elements_list.length > base_num_meas){
+            throw "Forward alignment process error";
+        }
+        return mi_ref;
     }
 
     determineRooms(param, reharsal_x_width_info, total_width){
@@ -514,79 +590,45 @@ export class DefaultRenderer extends Renderer {
         let row = 0;
 
         while (row < reharsal_x_width_info.length){
-            let row_elements_list = reharsal_x_width_info[row][0];
+            let group_ret = this.collectForwardAlignedRowGroup(reharsal_x_width_info, row, param);
+            let aligned_row_group = group_ret.group;
+            let base_num_meas = group_ret.base_num_meas;
 
-            let x_width_info = reharsal_x_width_info[row][1]; // For number of measures
+            for(let rowdash = 0; rowdash < aligned_row_group.length; ++rowdash){
+                let row_elements_list = aligned_row_group[rowdash][0];
+                let x_width_info = aligned_row_group[rowdash][1];
+                let num_meas = row_elements_list.length;
+                let reduced_meas_valid = this.resolveRowAlign(row_elements_list, param) != "expand" && base_num_meas > num_meas;
 
-            let num_meas = row_elements_list.length;
-
-            let num_meas_to_consider = num_meas;  // for type #2 and #3
-
-            // In case right or left align is specified
-            let reduced_meas_valid = false;
-            if(row_elements_list[0].align != "expand" && row > 0){
-                // find the last measure for which expand is applied, or fallback to #0.
-                let rowdash;
-                for(rowdash=row-1; rowdash>=0; --rowdash){
-                    if(reharsal_x_width_info[rowdash][0][0].align == "expand") break;
-                }
-                if(rowdash<0) rowdash=0; // Fallback to #0 even it has right|left align
-                reduced_meas_valid = (reharsal_x_width_info[rowdash][0].length > num_meas);
-            
-                if(reduced_meas_valid){
-                    num_meas_to_consider = reharsal_x_width_info[rowdash][0].length;
+                if( param.optimize_type == 0){
+                    this.optimizeType0(row_elements_list, x_width_info, total_width);
+                }else if( param.optimize_type == 1){
+                    this.optimizeType1(row_elements_list, x_width_info, total_width,
+                        num_meas, base_num_meas, reduced_meas_valid);
+                }else if(param.optimize_type == 2){
+                    this.optimizeType2(row_elements_list, x_width_info, total_width, 
+                        num_meas, base_num_meas, reduced_meas_valid, param.opt2_room_dist, param);
+                }else if(param.optimize_type == 3){
+                    this.optimizeType3(row_elements_list, x_width_info, total_width, 
+                        num_meas, base_num_meas, reduced_meas_valid, param);
+                }else if(param.optimize_type == 4){
+                    this.optimizeType4(row_elements_list, x_width_info, total_width, 
+                        num_meas, base_num_meas, reduced_meas_valid, param.opt2_room_dist, param);
+                }else{
+                    throw ("Invalid optimize type");
                 }
             }
 
-            if( param.optimize_type == 0){
-                this.optimizeType0(row_elements_list, x_width_info, total_width);
-                row++;
-            }else if( param.optimize_type == 1){
-                this.optimizeType1(row_elements_list, x_width_info, total_width,
-                    num_meas, num_meas_to_consider, reduced_meas_valid);
-                row++;
-            }else if(param.optimize_type == 2){
-                // Equal division
-                this.optimizeType2(row_elements_list, x_width_info, total_width, 
-                    num_meas, num_meas_to_consider, reduced_meas_valid, param.opt2_room_dist);
-                row++;          
-            }else if(param.optimize_type == 3){
-                // Combination of 2_0 and 0(fallback option when negative total room)
-                this.optimizeType3(row_elements_list, x_width_info, total_width, 
-                    num_meas, num_meas_to_consider, reduced_meas_valid);
-                row++; 
-            }else if(param.optimize_type == 4){
-                // Combination of 2_0|2_1 and 1(fallback option when negative total room)
-                this.optimizeType4(row_elements_list, x_width_info, total_width, 
-                    num_meas, num_meas_to_consider, reduced_meas_valid, param.opt2_room_dist);
-                row++; 
-            }else{
-                throw ("Invalid optimize type");
-            }
+            row = group_ret.next_row;
         }
         
         if(param.vertical_align){
             let row = 0;
             
             while (row < reharsal_x_width_info.length){
-                let num_meas = reharsal_x_width_info[row][0].length;
-
-                // Group the rows with :
-                //     1. the same number of measures from #row
-                //     2. Having right align mark and having less than 1st row
-                let same_nmeas_row_group = [];
-                let rowdash;
-                for(rowdash = row; rowdash < reharsal_x_width_info.length; ++rowdash){
-                    if(reharsal_x_width_info[rowdash][0].length == num_meas){
-                        same_nmeas_row_group.push(reharsal_x_width_info[rowdash]);
-                    }else if(rowdash > 0 && 
-                             (reharsal_x_width_info[rowdash][0][0].align != "expand") && 
-                             reharsal_x_width_info[rowdash][0].length < num_meas){
-                        same_nmeas_row_group.push(reharsal_x_width_info[rowdash]);
-                    }else{
-                        break; // only group the continuous rows with same number of measures
-                    }
-                }
+                let group_ret = this.collectForwardAlignedRowGroup(reharsal_x_width_info, row, param);
+                let same_nmeas_row_group = group_ret.group;
+                let num_meas = group_ret.base_num_meas;
 
                 // Withing the group above, search for the groups for which alternation extension condition is met
 
@@ -598,34 +640,15 @@ export class DefaultRenderer extends Renderer {
                 // In case the row with less measures than other rows exists,
                 // mapping of measure index is not a simple 1:1 relation.
                 // This function is to map the global measure index to local measure index
-                let getMeasRefIndex = function(globalmi, row_elements_list, base_num_meas){
-                    let mi_ref = globalmi;
-                    if(row_elements_list.length < base_num_meas){
-                        if(row_elements_list[0].align == "right"){
-                            if(globalmi >= (base_num_meas - row_elements_list.length) )
-                                mi_ref = globalmi - (base_num_meas - row_elements_list.length);
-                            else
-                                mi_ref = null; // Not corresponding meas exist
-                        }else if(row_elements_list[0].align == "left"){
-                            if(globalmi < row_elements_list.length)
-                                mi_ref = globalmi;
-                            else
-                                mi_ref = null; // Not corresponding meas exist
-                        }
-                    }else if(row_elements_list.length > base_num_meas){
-                        throw "Vertical align process error"; // Should be bug
-                    }
-                    return mi_ref;
-                };
-
                 // TODO : More clean code ...
+                let rowdash;
                 for(rowdash=0; rowdash<same_nmeas_row_group.length; ++rowdash){
                     let dammy_max_measure_widths = new Array(num_meas).fill(0);
 
                     let x_width_info = same_nmeas_row_group[rowdash][1];
                     let row_elements_list = same_nmeas_row_group[rowdash][0];
                     for(let mi=0; mi < num_meas; ++mi){
-                        let mi_ref = getMeasRefIndex(mi, row_elements_list, num_meas);
+                        let mi_ref = this.getAlignedMeasureRefIndex(mi, row_elements_list, num_meas, param);
                         if(mi_ref == null){
                             // corresponding measure does not exist : inherit current max value
                             dammy_max_measure_widths[mi] = max_measure_widths[mi];
@@ -652,7 +675,7 @@ export class DefaultRenderer extends Renderer {
                         // For the case of 2 and more rows. Judge if combined rows meets the criteria.
                         for(let rowdash2 = 0; rowdash2 <= rowdash; ++rowdash2){
                             for(let mi=0; mi < num_meas; ++mi){
-                                let mi_ref = getMeasRefIndex(mi, same_nmeas_row_group[rowdash2][0], num_meas);
+                                let mi_ref = this.getAlignedMeasureRefIndex(mi, same_nmeas_row_group[rowdash2][0], num_meas, param);
                                 if(mi_ref == null) continue;
                                 // Calculate alter ratio for this measure
                                 let alter_ratio = same_nmeas_row_group[rowdash2][1][mi_ref].measure_width / 
@@ -689,7 +712,7 @@ export class DefaultRenderer extends Renderer {
                     let x_width_info = same_nmeas_row_group[rowdash][1];
                     let row_elements_list = same_nmeas_row_group[rowdash][0];
                     for(let mi=0; mi < num_meas; ++mi){
-                        let mi_ref = getMeasRefIndex(mi, row_elements_list, num_meas);
+                        let mi_ref = this.getAlignedMeasureRefIndex(mi, row_elements_list, num_meas, param);
                         if(mi_ref == null) continue;
                         let m = row_elements_list[mi_ref];
                         let intra_meas_room_dist = 1;
@@ -730,12 +753,12 @@ export class DefaultRenderer extends Renderer {
                         row_total_width += max_measure_widths[mi + (max_measure_widths.length-row_elements_list.length)];
                     }
                     let m = row_elements_list[0];
-                    if(m.align == "right"){
+                    if(this.resolveRowAlign(row_elements_list, param) == "right"){
                         m.renderprop.left_margin =  total_width - row_total_width;
                     }
                 }
 
-                row += act_num_grouped_rows;
+                row = group_ret.next_row;
                 if(act_num_grouped_rows <= 0){
                     throw "Something wrong with the code";
                 }
@@ -874,6 +897,18 @@ export class DefaultRenderer extends Renderer {
        this.setoffsetparam(param);
     }
 
+    /**
+     * The font size that fits `text` in `width`: smaller (down to 40%) when it's wider, so a long
+     * title or footer stays on the page instead of running off both sides. Only when drawing:
+     * the measuring pass (stage 1) reserves the full size's height, which a smaller size fits in.
+     */
+    fittedFontSize(canvas, text, fsize, width, draw, opt){
+        if(!draw || !(width > 0)) return fsize;
+        let measured = graphic.canvasText(canvas, 0, 0, text, fsize, "lt", null, true, opt).width;
+        if(!(measured > width)) return fsize;
+        return Math.max(fsize * 0.4, fsize * width / measured);
+    }
+
     drawheader(canvas, param, stage, x, width, track){
         let max_header_height = 0;
 
@@ -884,7 +919,7 @@ export class DefaultRenderer extends Renderer {
                 x + width / 2,
                 param.y_title_offset,
                 track.getVariable("TITLE"),
-                param.title_font_size,
+                this.fittedFontSize(canvas, track.getVariable("TITLE"), param.title_font_size, width, stage == 2, {font:param.title_font}),
                 "ct",
                 null, stage==1, {font:param.title_font}
             );
@@ -901,7 +936,7 @@ export class DefaultRenderer extends Renderer {
                 x + width / 2,
                 param.y_subtitle_offset,
                 track.getVariable("SUB_TITLE"),
-                param.subtitle_font_size,
+                this.fittedFontSize(canvas, track.getVariable("SUB_TITLE"), param.subtitle_font_size, width, stage == 2, {font:param.subtitle_font}),
                 "ct",
                 null, stage==1, {font:param.subtitle_font}
             );
@@ -1141,7 +1176,7 @@ export class DefaultRenderer extends Renderer {
         let headerHeight = this.drawheader(this.memCanvas, param, 1, 0, 100, track); // x position, width is dammy, as only height information is important.
         if(headerHeight > 0){
             y_base_screening += headerHeight;
-            y_base_screening += headerHeight > 0 ? param.y_header_margin : 0;
+            y_base_screening += headerHeight > 0 ? param.section_margin_top : 0;
         }else{
             y_base_screening += param.y_offset_top;
         }
@@ -1182,6 +1217,14 @@ export class DefaultRenderer extends Renderer {
                m.renderprop.body_grouping_info = geret;
            }
 
+           const prevBlockIds = pei > 0 ? yse[pei - 1].block_ids : null;
+           const currentFirstBlockId = yse[pei].block_ids[0];
+           const previousLastBlockId = prevBlockIds ? prevBlockIds[prevBlockIds.length - 1] : null;
+           const rowStartsBlock =
+               currentFirstBlockId != null &&
+               previousLastBlockId != null &&
+               currentFirstBlockId !== previousLastBlockId;
+
            // y-screening is done in stage 2 as well : TODO : Make it once
            // Do it in the dammy position y = 0;
            var yprof = this.screeningYAreas(
@@ -1189,6 +1232,7 @@ export class DefaultRenderer extends Renderer {
                yse[pei].cont[0].getVariable("SHOW_STAFF"), 
                yse[pei].cont[0].getVariable("REHARSAL_MARK_POSITION")=="Inner",
                yse[pei].pm,
+               rowStartsBlock,
                false);
             
             // yprof.end.y means the row total height
@@ -1283,8 +1327,8 @@ export class DefaultRenderer extends Renderer {
 
         let max_header_height = this.drawheader(this.context.current_canvas, param, 2, page_origin.x + param.x_offset_left, page_content_width, track);
         if(max_header_height > 0){
-            y_stacks.push({ type: "titles", height: (max_header_height + param.y_header_margin) });
-            y_base += (max_header_height + param.y_header_margin);
+            y_stacks.push({ type: "titles", height: (max_header_height + param.section_margin_top) });
+            y_base += (max_header_height + param.section_margin_top);
         }else{
             y_base += param.y_offset_top;
         }
@@ -1295,7 +1339,10 @@ export class DefaultRenderer extends Renderer {
             page_width, Math.max(2, headerH)),
             new common.GenericRow("HEADER", null));
 
-        let pages = [{canvas:this.context.current_canvas}];
+        // `rows`: measure rows drawn on each page, so callers can avoid a lone row on a page.
+        let pages = [{canvas:this.context.current_canvas, rows: 0}];
+        // A repeat ending ([1.], [2.]) still open from an earlier bar (see renderMeasureRow).
+        this.open_ending = null;
 
         for (let pei = 0; pei < yse.length; ++pei) {
             // Loop each y_stacks
@@ -1311,6 +1358,13 @@ export class DefaultRenderer extends Renderer {
                 
                 const suppressSectionMargin =
                     y_base <= page_origin.y + yse[pei].param.y_offset_top + 0.001;
+                const prevBlockIds = pei > 0 ? yse[pei - 1].block_ids : null;
+                const currentFirstBlockId = yse[pei].block_ids[0];
+                const previousLastBlockId = prevBlockIds ? prevBlockIds[prevBlockIds.length - 1] : null;
+                const rowStartsBlock =
+                    currentFirstBlockId != null &&
+                    previousLastBlockId != null &&
+                    currentFirstBlockId !== previousLastBlockId;
                 let r = this.renderMeasureRow(
                     track,
                     page_origin.x + param.x_offset_left,
@@ -1323,6 +1377,7 @@ export class DefaultRenderer extends Renderer {
                     yse[pei].cont[0].getVariable("REHARSAL_MARK_POSITION")=="Inner",
                     ylimit,
                     music_context,
+                    rowStartsBlock,
                     suppressSectionMargin
                 );
                 if (!r) {
@@ -1355,7 +1410,7 @@ export class DefaultRenderer extends Renderer {
                                 param.background_color);
                     }
 
-                    pages.push({canvas:this.context.current_canvas});
+                    pages.push({canvas:this.context.current_canvas, rows: 0});
 
                     // try again next page
                     pei = pei - 1;
@@ -1371,6 +1426,7 @@ export class DefaultRenderer extends Renderer {
                         new graphic.BoundingBox(0, r.mu_y, param.paper_width / param.text_size, r.y_base - r.mu_y),
                         new common.GenericRow("BODY", [row_elements_list[0], row_elements_list[row_elements_list.length-1]]));
                     y_base = r.y_base;
+                    pages[pages.length - 1].rows += 1;
                 }
             }
         }
@@ -1396,7 +1452,7 @@ export class DefaultRenderer extends Renderer {
                     page_origin.x + page_width / 2,
                     page_origin.y + page_height - param.y_footer_offset, 
                     footerstr,
-                    12,
+                    this.fittedFontSize(page.canvas, footerstr, 12, page_width - param.x_offset_left - param.x_offset_right, true),
                     "ct"
                 );
             });
@@ -1408,12 +1464,12 @@ export class DefaultRenderer extends Renderer {
         this.hitManager.commit(this.context.current_canvas);
 
         return {
-            pages: common.shallowcopy(pages)
+            pages: pages.slice() // a copy that stays an array (shallowcopy made it an object)
         };
     }
 
     screeningYAreas(row_elements_list, y_base, param, show_staff, 
-        inner_reharsal_mark, prev_measure, suppress_section_margin=false){
+        inner_reharsal_mark, prev_measure, row_starts_block=false, suppress_section_margin=false){
 
         var ycomps = ["rm", "mu","body","rs","ml","irm","end"];
         var yprof = {
@@ -1435,7 +1491,6 @@ export class DefaultRenderer extends Renderer {
 
         // Screening of y-axis areas
         let rg_mark_detected = false;
-        let row_start_coda_detected = false;
         let fixed_mu_elem_detected = false;
         for (let ml = 0; ml < row_elements_list.length; ++ml) {
             var m = row_elements_list[ml];
@@ -1462,9 +1517,6 @@ export class DefaultRenderer extends Renderer {
                 ){
                     yprof.mu.detected = true;
                     fixed_mu_elem_detected = true;
-                    if (ml === 0 && e instanceof common.Coda) {
-                        row_start_coda_detected = true;
-                    }
                 } else if (e instanceof common.MeasureBoundary) {
                     yprof.ml.detected =
                     yprof.ml.detected ||
@@ -1507,7 +1559,7 @@ export class DefaultRenderer extends Renderer {
         }
 
         const sectionMarginTop = (typeof param.section_margin_top === "number") ? param.section_margin_top : 0;
-        if((rg_mark_detected || row_start_coda_detected) &&
+        if(row_starts_block &&
             prev_measure != null &&
             sectionMarginTop !== 0 &&
             !suppress_section_margin){
@@ -1576,6 +1628,7 @@ export class DefaultRenderer extends Renderer {
             var meas_num_flexible_rooms = 0;
             var all_fixed_width_details = [];
             var elements = this.classifyElements(m);
+            let header_boundary_type = null;
             elements.header.forEach(e => {
                 if (e instanceof common.MeasureBoundary) {
                     var pm = ml == 0 ? prev_measure : row_elements_list[ml - 1];
@@ -1596,11 +1649,13 @@ export class DefaultRenderer extends Renderer {
                     meas_fixed_width += r.width;
                     all_fixed_width_details.push({type:"fixed", f:r.width});
                     e.renderprop = { w: r.width };
+                    header_boundary_type = r.draw_type;
                 } else if (e instanceof common.Time) {
-                    let w = 12;
+                    let lead = this.timeSigGapAfterBoundary(header_boundary_type);
+                    let w = 12 + lead;
                     meas_fixed_width += w;
                     all_fixed_width_details.push({type:"fixed", f:w});
-                    e.renderprop = { w: w };
+                    e.renderprop = { w: w, lead: lead };
                 }
             });
 
@@ -1749,7 +1804,7 @@ export class DefaultRenderer extends Renderer {
 
         body_grouping_info.groupedBodyElems.forEach( (element_group, gbei) => {
             // Draw Rythm Slashes, first
-             if (yprof.rs.detected && body_grouping_info.all_has_length) {
+             if (yprof.rs.detected && body_grouping_info.any_has_length) {
 
                 let draw_scale = 1.0;
                 let room_for_rs_per_elem = 0;
@@ -1804,14 +1859,7 @@ export class DefaultRenderer extends Renderer {
                     if(draw) this.hitManager.add(paper, cr.bb.scale(draw_scale,1), e0);
 
                     if (draw && e0.exceptinal_comment !== null) {
-                        let r = graphic.canvasText(
-                            paper,
-                            x / draw_scale,
-                            yprof.mu.y + yprof.mu.height,
-                            e0.exceptinal_comment.comment,
-                            param.base_font_size / 2,
-                            "lb"
-                        );
+                        let r = this.renderChordComment(paper, x / draw_scale, yprof.mu.y + yprof.mu.height, e0.exceptinal_comment.comment, param);
                         this.hitManager.add(paper, r.bb.scale(draw_scale,1), e0.exceptinal_comment);
                     }
                     if (draw && e0.lyric !== null) {
@@ -1920,14 +1968,7 @@ export class DefaultRenderer extends Renderer {
                         );
 
                         if (draw && e.exceptinal_comment !== null && !e.isSyncopatedSource()) {
-                            let r = graphic.canvasText(
-                                paper,
-                                x / draw_scale,
-                                yprof.mu.y + yprof.mu.height,
-                                e.exceptinal_comment.comment,
-                                param.base_font_size / 2,
-                                "lb"
-                            );
+                            let r = this.renderChordComment(paper, x / draw_scale, yprof.mu.y + yprof.mu.height, e.exceptinal_comment.comment, param);
                             this.hitManager.add(paper, r.bb.scale(draw_scale,1), e.exceptinal_comment);
                         }
                         if (draw && e.lyric !== null && !e.isSyncopatedSource()) {
@@ -2044,14 +2085,17 @@ export class DefaultRenderer extends Renderer {
         // In current version, each chord in the measure is assumed to have the same duration.
         // TODO : Improve based on number of spaces or duration indication mark.
         let all_has_length = true;
+        let any_has_length = false;
         let chord_name_str = null;
         let sum_length = 0;
         let rest_or_long_rests_detected = false;
 
         body_elements.forEach(function(e) {
             if(e instanceof common.Space) return;
-            all_has_length &= e.note_group_list !== null;
-            if (all_has_length)
+            const has_len = e.note_group_list !== null;
+            all_has_length &= has_len;
+            any_has_length |= has_len;
+            if (has_len)
                 sum_length += e.note_group_list[0].lengthIndicator.length;
             rest_or_long_rests_detected |= e instanceof common.Rest;
         });
@@ -2095,9 +2139,18 @@ export class DefaultRenderer extends Renderer {
             groupedBodyElems[gbei].elems.push(e);
         });
 
-        return {groupedBodyElems: groupedBodyElems, all_has_length:all_has_length};
+        return {groupedBodyElems: groupedBodyElems, all_has_length:all_has_length, any_has_length:any_has_length};
     }
 
+
+    /** Finishes an open repeat ending's bracket at `x`, with a closing tick for a 1st ending. */
+    closeEnding(paper, x, with_tick) {
+        const ending = this.open_ending;
+        this.open_ending = null;
+        if (!ending || ending.paper !== paper || x <= ending.sx) return;
+        graphic.canvasLine(paper, ending.sx, ending.ly, x, ending.ly);
+        if (with_tick) graphic.canvasLine(paper, x, ending.ly, x, ending.ly + ending.oy);
+    }
 
     renderMeasureRow(
         track,
@@ -2111,13 +2164,18 @@ export class DefaultRenderer extends Renderer {
         inner_reharsal_mark,
         ylimit,
         music_context,
+        row_starts_block=false,
         suppress_section_margin=false
     ) {
         var x_global_scale = track.getVariable("X_GLOBAL_SCALE");
         var transpose = track.getVariable("TRANSPOSE");
         var half_type = track.getVariable("KEY_TYPE");
         var key = track.getVariable("KEY");
-        var show_staff = track.getVariable("SHOW_STAFF");
+        // The row's own %SHOW_STAFF (set just before it in the source) wins over the chart's, as it
+        // does when the row is measured in stage 1; reading only the track's ignored it here.
+        var show_staff = (row_elements_list[0] && row_elements_list[0].getVariable)
+            ? row_elements_list[0].getVariable("SHOW_STAFF")
+            : track.getVariable("SHOW_STAFF");
 
         /* Reference reserved width for empty measures or chord symbol without base names*/
         var C7_width = 20;
@@ -2126,7 +2184,7 @@ export class DefaultRenderer extends Renderer {
         var _5lines_intv = param.rs_area_height / (5 - 1);
 
         var yprof = this.screeningYAreas(row_elements_list, y_base, param, show_staff, 
-            inner_reharsal_mark, prev_measure, suppress_section_margin);
+            inner_reharsal_mark, prev_measure, row_starts_block, suppress_section_margin);
         
         var y_body_or_rs_base = yprof.rs.detected ? yprof.rs.y : yprof.body.y;
         var repeat_mark_y_base = yprof.rs.detected ? 
@@ -2277,7 +2335,7 @@ export class DefaultRenderer extends Renderer {
                     const timeSigScale = (typeof rhythmProfile.timeSigScale === "number") ? rhythmProfile.timeSigScale : 1.0;
                     const timeSigLeftMargin = (typeof rhythmProfile.timeSigLeftMargin === "number") ? rhythmProfile.timeSigLeftMargin : 2;
                     const timeSigCenterYOffset = (typeof rhythmProfile.timeSigCenterYOffset === "number") ? rhythmProfile.timeSigCenterYOffset : 0;
-                    let left_margin = timeSigLeftMargin;
+                    let left_margin = timeSigLeftMargin + ((e.renderprop && e.renderprop.lead) || 0);
                     let timeSigCenterY = y_body_or_rs_base + row_height/2 + timeSigCenterYOffset;
                     let timeSigHeight = cont_height/2 * timeSigScale;
                     
@@ -2329,10 +2387,26 @@ export class DefaultRenderer extends Renderer {
             let footer_start_x = x;
 
             // Draw footer
-            var footer_base = x;
+            // End-of-measure marks (D.S., D.C., Fine, To Coda, Coda) are right-aligned to the
+            // barline. Several in one measure stack leftwards in source order, last one
+            // rightmost, so "<D.S. al Coda> ... <Coda>" reads "D.S. al Coda ⊕" instead of
+            // drawing both at the same spot.
+            const footer_mark_gap = 3;
+            let pending_marks = [];
+            const flushFooterMarks = (right_x) => {
+                let rx = right_x;
+                for (let pi = pending_marks.length - 1; pi >= 0; --pi) {
+                    let e = pending_marks[pi];
+                    let bb = this.drawFooterMark(paper, param, rx, repeat_mark_y_base, e);
+                    this.hitManager.add(paper, bb, e);
+                    rx -= bb.width() + footer_mark_gap;
+                }
+                pending_marks = [];
+            };
             for (let ei = 0; ei < elements.footer.length; ++ei) {
                 let e = elements.footer[ei];
                 if (e instanceof common.MeasureBoundary) {
+                    flushFooterMarks(x);
                     var nm =
                         ml == row_elements_list.length - 1
                             ? next_measure
@@ -2356,70 +2430,19 @@ export class DefaultRenderer extends Renderer {
                     x += e.renderprop.w;
                     if(r.bb) this.hitManager.add(paper, r.bb, e);
                     if(r.bb2) this.hitManager.add(paper, r.bb2, e);
-                } else if (e instanceof common.Coda) {
-                    let r = this.drawCoda(
-                        paper,
-                        param,
-                        x,
-                        repeat_mark_y_base,
-                        "rb",
-                        e,
-                        param.base_font_size
-                    );
-                    this.hitManager.add(paper, r.bb, e);
-                } else if (e instanceof common.DaCapo) {
-                    let r = graphic.canvasText(
-                        paper,
-                        x,
-                        repeat_mark_y_base,
-                        e.toString(),
-                        param.base_font_size / 2,
-                        "rb", null, null, {font:param.repeat_mark_font}
-                    );
-                    this.hitManager.add(paper, r.bb, e);
-                } else if (e instanceof common.DalSegno) {
-                    let r = graphic.canvasText(
-                        paper,
-                        x,
-                        repeat_mark_y_base,
-                        e.toString(),
-                        param.base_font_size / 2,
-                        "rb", null, null, {font:param.repeat_mark_font}
-                    );
-                    this.hitManager.add(paper, r.bb, e);
-                } else if (e instanceof common.ToCoda) {
-                    let r = this.drawCoda(
-                        paper,
-                        param,
-                        x,
-                        repeat_mark_y_base,
-                        "rb",
-                        e,
-                        param.base_font_size
-                    );
-                    let rt = graphic.canvasText(
-                        paper,
-                        x - r.bb.width(),
-                        repeat_mark_y_base,
-                        "To",
-                        param.base_font_size / 2,
-                        "rb", null, null, {font:param.repeat_mark_font}
-                    );
-                    this.hitManager.add(paper, r.bb.add_BB(rt.bb), e);
-                } else if (e instanceof common.Fine) {
-                    let r = graphic.canvasText(
-                        paper,
-                        x,
-                        repeat_mark_y_base,
-                        e.toString(),
-                        param.base_font_size / 2,
-                        "rb", null, null, {font:param.repeat_mark_font}
-                    );
-                    this.hitManager.add(paper, r.bb, e);
+                } else if (
+                    e instanceof common.Coda ||
+                    e instanceof common.DaCapo ||
+                    e instanceof common.DalSegno ||
+                    e instanceof common.ToCoda ||
+                    e instanceof common.Fine
+                ) {
+                    pending_marks.push(e);
                 } else {
                     throw "Unkown instance of footer elements";
                 }
             }
+            flushFooterMarks(x);
 
             let footer_width = x - footer_start_x;
 
@@ -2433,11 +2456,14 @@ export class DefaultRenderer extends Renderer {
                     var oy = 12;
                     var ly = yprof.body.y - 2 - oy;
                     var sx = meas_start_x_actual_boundary;
-                    var fx = meas_start_x + (meas_end_x - meas_start_x) * 0.7;
+                    // The bracket runs on over the following bars, to the ending's repeat
+                    // sign (or the next ending, or a double/final bar): drawn below, after
+                    // each bar. It used to cover only this bar.
+                    if (this.open_ending) this.closeEnding(paper, sx - 3, false);
                     graphic.canvasLine(paper, sx, ly, sx, ly + oy);
-                    graphic.canvasLine(paper, sx, ly, fx, ly);
                     bb.add(sx, ly+oy);
-                    bb.add(fx, ly);
+                    bb.add(sx + 10, ly);
+                    this.open_ending = { paper: paper, sx: sx, ly: ly, oy: oy };
                     var s = e.indstr;
                     let r = graphic.canvasText(
                         paper,
@@ -2555,6 +2581,43 @@ export class DefaultRenderer extends Renderer {
                     this.hitManager.add(paper, r.bb, e);
                 } else {
                     throw "Unkown measure wide instance detected";
+                }
+            }
+
+            // An open ending's bracket over this bar: to here, closing at its repeat sign, a
+            // double or final bar, or where the next ending starts; on to the next row if not.
+            if (this.open_ending) {
+                const ending = this.open_ending;
+                if (ending.paper !== paper || ending.started_row !== yprof.body.y) {
+                    if (ending.started_row !== undefined) {
+                        // Carried over from the previous row: start again at this row's left.
+                        ending.paper = paper;
+                        ending.sx = meas_start_x;
+                        ending.ly = yprof.body.y - 2 - ending.oy;
+                    }
+                    ending.started_row = yprof.body.y;
+                }
+                const end_mark = m.childNodes[m.childNodes.length - 1];
+                const next = ml + 1 < row_elements_list.length ? row_elements_list[ml + 1] : next_measure;
+                const next_starts_ending = next != null && next.childNodes.some(c => c instanceof common.LoopIndicator);
+                const closes_repeat = end_mark instanceof common.LoopEndMark || end_mark instanceof common.LoopBothMark;
+                const closes_section = end_mark instanceof common.MeasureBoundaryFinMark ||
+                    (end_mark instanceof common.MeasureBoundaryMark && end_mark.nline == 2);
+                // An ending also stops where its section does (a 2nd ending often just runs into
+                // the next section, with no barline to stop at): it used to run on through the
+                // rest of the chart.
+                const next_in_other_block = next != null && next.parentNode !== m.parentNode;
+                // A bracket stops at the end of its row, left open. The next row has no room
+                // reserved above it, so a bracket carried on to it was drawn through the chords
+                // of the row above (QA: "All In Love Is Fair", a 2nd ending ending a row early).
+                const ends_row = ml + 1 >= row_elements_list.length;
+                if (closes_repeat || closes_section || next_starts_ending || next_in_other_block || next == null) {
+                    this.closeEnding(paper, meas_end_x - 4, closes_repeat);
+                } else if (ends_row) {
+                    this.closeEnding(paper, meas_end_x - 4, false);
+                } else {
+                    graphic.canvasLine(paper, ending.sx, ending.ly, meas_end_x, ending.ly);
+                    ending.sx = meas_end_x;
                 }
             }
 
@@ -2697,6 +2760,32 @@ export class DefaultRenderer extends Renderer {
             throw "NOT SUPPORTED";
         }
         return { bb: bb };
+    }
+
+    /**
+     * Text above a chord ('…'@ C). A fermata (the 𝄐 character, or the word Fermata, as iReal Pro
+     * imports write it) is drawn as the symbol: an arc over a dot.
+     */
+    renderChordComment(paper, x, y_bottom, comment, param) {
+        const text = String(comment ?? "").trim();
+        if (text === "\u{1D110}" || /^fermata$/i.test(text)) {
+            const w = param.base_font_size * 0.62;
+            const cx = x + w / 2;
+            const cy = y_bottom - 1;
+            const ctx = paper.getContext("2d");
+            ctx.save();
+            ctx.lineWidth = Math.max(1.2, w / 9);
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.arc(cx, cy, w / 2, Math.PI, 2 * Math.PI, false);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx, cy - w * 0.12, Math.max(1.2, w / 9), 0, 2 * Math.PI, false);
+            ctx.fill();
+            ctx.restore();
+            return { bb: new graphic.BoundingBox(x, cy - w / 2 - 1, w, w / 2 + 2) };
+        }
+        return graphic.canvasText(paper, x, y_bottom, comment, param.base_font_size / 2, "lb");
     }
 
     renderChordAsString(chord, paper, x, y_body_base, param, draw) {
@@ -2915,6 +3004,14 @@ export class DefaultRenderer extends Renderer {
         param,
         C7_width
     ) {
+        if (chord.is_no_chord) {
+            // N.C.: the letters in the chord font, a little smaller than a root, not transposed.
+            const chordProfile = (this.music_font_profile && this.music_font_profile.chord) || getMusicFontProfile("bravura").chord;
+            const userChordScale = (typeof param.chord_font_scale === "number" && param.chord_font_scale > 0) ? param.chord_font_scale : 1.0;
+            const B = param.base_font_size * userChordScale * chordProfile.fontSizeScale;
+            let r = graphic.canvasText(canvas, x, y_body_base + param.row_height / 2, "N.C.", B * 0.75, "lm", undefined, !draw);
+            return { width: r.bb.width(), bb: r.bb };
+        }
         if (!chord.is_valid_chord) {
             let r = this.renderChordAsString(
                 chord,
@@ -3242,6 +3339,19 @@ export class DefaultRenderer extends Renderer {
                     );
                     tensions_width += r.width;
                     bb.add_BB(r.bb);
+                } else if (e.type == "tension" && e.value == "alt"){
+                    let r = graphic.canvasText(
+                        canvas,
+                        x + tensions_pos + tensions_width,
+                        y + param.row_height/2 + chord_offset_on_bass + upper_tension_y_offset,
+                        "alt",
+                        B * 0.5,
+                        "lb",
+                        B * 0.75,
+                        !draw
+                    );
+                    tensions_width += r.width;
+                    bb.add_BB(r.bb);
                 } else if (e.type == "tension" && e.value == "omit"){
                     let r = graphic.canvasText(
                         canvas,
@@ -3388,6 +3498,39 @@ export class DefaultRenderer extends Renderer {
      * @return dictionary with following keys and values
      *             x : updated x position.
      */
+    /**
+     * Draws one end-of-measure mark right-aligned at `x`; returns its bounding box.
+     */
+    drawFooterMark(paper, param, x, y, e) {
+        if (e instanceof common.Coda) {
+            return this.drawCoda(paper, param, x, y, "rb", e, param.base_font_size).bb;
+        }
+        if (e instanceof common.ToCoda) {
+            let r = this.drawCoda(paper, param, x, y, "rb", e, param.base_font_size);
+            let rt = graphic.canvasText(
+                paper, x - r.bb.width() - 2, y, "To",
+                param.base_font_size / 2,
+                "rb", null, null, {font:param.repeat_mark_font}
+            );
+            return r.bb.add_BB(rt.bb);
+        }
+        // DaCapo, DalSegno, Fine: text
+        return graphic.canvasText(
+            paper, x, y, e.toString(),
+            param.base_font_size / 2,
+            "rb", null, null, {font:param.repeat_mark_font}
+        ).bb;
+    }
+
+    /**
+     * Gap between begin-repeat dots and a time signature right after them. Music fonts draw
+     * digits with a left overhang (Petaluma's especially), so the plain left margin let the
+     * "4" cover the dots.
+     */
+    timeSigGapAfterBoundary(drawType) {
+        return (drawType === "b" || drawType === "B") ? 4 : 0;
+    }
+
     drawBoundary(
         side,
         e0,
@@ -3664,7 +3807,7 @@ export class DefaultRenderer extends Renderer {
             default:
                 throw "Internal error";
         }
-        return { drawn: true, width: w, actual_boundary: actual_boundary, bb:bb, bb2:bb2.width()>0?bb2:null };
+        return { drawn: true, width: w, actual_boundary: actual_boundary, bb:bb, bb2:bb2.width()>0?bb2:null, draw_type: draw_type };
     }
 
 

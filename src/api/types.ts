@@ -52,8 +52,15 @@ export interface RendererOptions {
   readonly defaultParams?: Record<string, unknown>;
 }
 
+export interface RenderedPage {
+  /** Measure rows drawn on this page (a lone row on the last page is a widow). */
+  readonly rows: number;
+}
+
 export interface RenderResult {
   readonly ok: boolean;
+  /** One entry per page, in order; present when the renderer paginated. */
+  readonly pages?: ReadonlyArray<RenderedPage>;
 }
 
 export interface RendererFacade {

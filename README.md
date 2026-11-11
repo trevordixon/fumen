@@ -160,7 +160,15 @@ Useful render params:
 - `music_font_data`: required glyph pack object when `music_font: "custom"`
 - `minor_chord_style`: `"minus"` (default) or `"m"`
 - `chord_font_scale`: extra multiplier for chord symbol sizing
-- `section_margin_top`: extra vertical space before rows starting a rehearsal section
+- `section_margin_top`: extra vertical space before rows starting a new block (except at the top of a page)
+- `default_row_align`: default alignment for rows without an explicit prefix: `"left"` (default), `"right"`, or `"expand"`
+
+Row alignment prefixes:
+
+- no prefix: uses `default_row_align` and defaults to left-aligned reduced-row behavior
+- `<`: explicit left-aligned reduced row
+- `>`: explicit right-aligned reduced row
+- `<>`: explicit expand row
 
 ## Documentation
 https://hbjpn.github.io/fumen/

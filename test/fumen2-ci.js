@@ -194,6 +194,7 @@ let dotest = async (headInfo)=>{
         "on_bass.fumen",
         "zoom.fumen",
         "align.fumen",
+        "align_forward_lookahead.fumen",
         "tuplet.fumen",
         "multiup.fumen"];
     const renderModes = [
@@ -228,6 +229,16 @@ let dotest = async (headInfo)=>{
             file: "section_margin_top.fumen",
             name: `section_margin_top_20.${mode.suffix}`,
             param: Object.assign({}, mode.param, { section_margin_top: 20 })
+        });
+        cases.push({
+            file: "block_margin_top.fumen",
+            name: `block_margin_top_20.${mode.suffix}`,
+            param: Object.assign({}, mode.param, { section_margin_top: 20 })
+        });
+        cases.push({
+            file: "default_row_align.fumen",
+            name: `default_row_align_expand.${mode.suffix}`,
+            param: Object.assign({}, mode.param, { default_row_align: "expand" })
         });
     });
     const results = [];
