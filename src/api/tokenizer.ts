@@ -2,7 +2,7 @@ import type { SourceSpan, SyntaxToken, SyntaxTokenKind } from "./types";
 import { buildSourceIndex, spanAt } from "../utils/source-map";
 
 const BARLINE_PATTERNS: readonly string[] = [":||:", "||:", ":||", "||.", "||", "|", "./|/.", "./."];
-const CHORD_ROOT_PATTERN = /^[A-G](?:b|#)?/;
+const CHORD_ROOT_PATTERN = /^[A-H](?:b|#|\u266D|\u266F)?/;
 const DURATION_PATTERN = /^:\d+(?:\.?\d+)?(?:\.)?$/;
 
 interface CursorState {

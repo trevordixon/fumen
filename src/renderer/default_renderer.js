@@ -31,6 +31,7 @@ import { getMusicFontProfile } from "./music_font_profiles";
  * @property {int} [y_subtitle_offset] Top offset for sub-title
  * @property {int} [y_artist_offset] Top offset for artist row
  * @property {int} [y_footer_offset] Bottom offset for footer
+ * @property {string} [page_of_format] Page number in the footer, e.g. "{page} of {pages}" (default "{page}/{pages}")
  * @property {String} [music_font="bravura"] Music font selector. "bravura" and "petaluma" are built-in options, and "custom" uses music_font_data.
  * @property {Object} [music_font_data] Custom music glyph set keyed by glyph names (e.g. "uniE0A2"), each with at least dataURL.
  * @property {String} [minor_chord_style="minus"] Minor triad marker style: "minus" renders `-`, "m" renders lowercase `m`.
@@ -1445,8 +1446,11 @@ export class DefaultRenderer extends Renderer {
                 // Page number footer
                 page_origin = pageOffset(l_pageidx + start_pageidx);
 
-                let footerstr =
-                    (songname ? (songname + " - ") : "") + (l_pageidx + 1) + " of " + pages.length;
+                // "1/2" reads the same in every language ("1 of 2" was English on every chart);
+                // page_of_format ("{page} of {pages}") puts it in words.
+                let pageof = String(param.page_of_format || "{page}/{pages}")
+                    .replace("{page}", String(l_pageidx + 1)).replace("{pages}", String(pages.length));
+                let footerstr = (songname ? (songname + " - ") : "") + pageof;
                 graphic.canvasText(
                     page.canvas,
                     page_origin.x + page_width / 2,

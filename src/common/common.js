@@ -485,6 +485,7 @@ export class Chord extends Element {
     getElementName() { return "Chord"; }
     clone(){
         let n = new Chord(this.chord_str);
+        this.copyNoteNamesTo(n);
         if(this.exceptinal_comment){
             n.exceptinal_comment = this.exceptinal_comment.clone();
             n.exceptinal_comment.setCodeDependency(n);
@@ -499,6 +500,7 @@ export class Chord extends Element {
         this.syncopationElement = se;
 
         let n = new Chord(this.chord_str);
+        this.copyNoteNamesTo(n);
         if(this.exceptinal_comment){
             n.exceptinal_comment = this.exceptinal_comment; // Just use reference
             //n.exceptinal_comment.setCodeDependency(n); // Chord dependency is kept for source chord.
@@ -546,10 +548,12 @@ export class Chord extends Element {
             return;
         }
 
-        // Analyze Chord symbol
-        var r = /^(((A|B|C|D|E|F|G)(#|b)?([^/r:]*))?(\/(A|B|C|D|E|F|G)(#|b)?)?)(r)?(:((([\d_]+)(\.*)(~)?)|(\(.*\))))?/;
+        // Analyze Chord symbol. H is the German B (Hm7); in a chart that uses it, a plain B is B♭
+        // (applyGermanNoteNames). ♯ and ♭ read as # and b: a phone keyboard or a pasted chart
+        // gives them, and they used to break the whole chart.
+        var r = /^(((A|B|C|D|E|F|G|H)(#|b)?([^/r:]*))?(\/(A|B|C|D|E|F|G|H)(#|b)?)?)(r)?(:((([\d_]+)(\.*)(~)?)|(\(.*\))))?/;
         // 6/9 is one quality, not a chord over a bass note "9".
-        var match_str = chord_str.replace(/^([A-G][#b]?m?)6\/9/, "$169");
+        var match_str = chord_str.replace(/\u266F/g, "#").replace(/\u266D/g, "b").replace(/^([A-H][#b]?m?)6\/9/, "$169");
         var m = match_str.match(r);
         //console.log(m);
         // [0] is entire matched string
@@ -574,6 +578,13 @@ export class Chord extends Element {
             this.mid_str = m[5];
             this.base_note_base = m[7];
             this.base_sharp_flat = m[8];
+            // German letters, kept as typed for exportCode: H is B natural.
+            this.german_root = null;
+            this.german_bass = null;
+            if (this.note_base === "H") { this.note_base = "B"; this.german_root = "H"; }
+            if (this.base_note_base === "H") { this.base_note_base = "B"; this.german_bass = "H"; }
+            // An accidental on H (His, Hes) isn't German usage: not a chord.
+            if ((this.german_root && this.sharp_flat) || (this.german_bass && this.base_sharp_flat)) this.is_valid_chord = false;
 
             this.mid_elems = null;
             if (this.mid_str !== undefined) {
@@ -664,9 +675,77 @@ export class Chord extends Element {
                 this.base_note_base,
                 this.base_sharp_flat
             );
+            // A slash chord keeps its shape: the bass is the same interval above the new root as
+            // it was above the old one (Ab/C up a half step is A/C#, not A/Db).
+            if (tranposed_note) {
+                var kept = Chord.spellBassFrom(this.note_base, this.sharp_flat, this.base_note_base, this.base_sharp_flat, tranposed_note);
+                if (kept) transposed_base_note = kept;
+            }
         }
 
+        if (this.german) {
+            tranposed_note = Chord.germanName(tranposed_note);
+            transposed_base_note = Chord.germanName(transposed_base_note);
+        }
         return [tranposed_note, transposed_base_note];
+    }
+
+    /**
+     * The bass of a slash chord spelled from its new root, keeping the interval: root Ab, bass C
+     * (a third up), new root A → C#. Null when that would need a double accidental or one of the
+     * hard-to-read Cb, Fb, E#, B# (the key-based spelling is used instead).
+     */
+    static spellBassFrom(root, rootAcc, bass, bassAcc, newRoot) {
+        var letters = ["C", "D", "E", "F", "G", "A", "B"];
+        var values = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+        var acc = function (a) { return a === "#" ? 1 : a === "b" ? -1 : 0; };
+        if (!(root in values) || !(bass in values) || !newRoot || !(newRoot[0] in values)) return null;
+        var steps = (letters.indexOf(bass) - letters.indexOf(root) + 7) % 7;
+        var semis = (values[bass] + acc(bassAcc) - values[root] - acc(rootAcc) + 24) % 12;
+        var letter = letters[(letters.indexOf(newRoot[0]) + steps) % 7];
+        var target = (values[newRoot[0]] + acc(newRoot[1]) + semis + 24) % 12;
+        var diff = ((target - values[letter]) % 12 + 18) % 12 - 6;
+        var spelled = diff === 0 ? letter : diff === 1 ? letter + "#" : diff === -1 ? letter + "b" : null;
+        if (!spelled || ["Cb", "Fb", "E#", "B#"].indexOf(spelled) >= 0) return null;
+        return spelled;
+    }
+
+    /** A copy re-reads the text alone, so it doesn't know the chart is German (applyGermanNoteNames). */
+    copyNoteNamesTo(n) {
+        if (!this.german) return;
+        n.german = true;
+        n.note_base = this.note_base; n.sharp_flat = this.sharp_flat; n.german_root = this.german_root;
+        n.base_note_base = this.base_note_base; n.base_sharp_flat = this.base_sharp_flat; n.german_bass = this.german_bass;
+    }
+
+    /** B natural as the German H, B♭ as the German B; every other note as it is. */
+    static germanName(note) {
+        if (note === "B") return "H";
+        if (note === "Bb") return "B";
+        return note;
+    }
+
+    /**
+     * A chart that writes H uses German note names throughout: its plain B is B♭, and it is
+     * shown the same way (H and B, transposed too). Charts without an H are left alone: B is B.
+     */
+    static applyGermanNoteNames(track) {
+        var chords = [];
+        var walk = function (node) {
+            if (!node) return;
+            if (node instanceof Chord) chords.push(node);
+            (node.childNodes || []).forEach(walk);
+        };
+        walk(track);
+        var german = chords.some(function (c) { return c.is_valid_chord && (c.german_root || c.german_bass); });
+        if (!german) return;
+        chords.forEach(function (c) {
+            if (!c.is_valid_chord) return;
+            c.german = true;
+            // German B (no accidental) is B♭; written back as typed.
+            if (c.note_base === "B" && !c.german_root && !c.sharp_flat) { c.sharp_flat = "b"; c.german_root = "B"; }
+            if (c.base_note_base === "B" && !c.german_bass && !c.base_sharp_flat) { c.base_sharp_flat = "b"; c.german_bass = "B"; }
+        });
     }
 
     forEachMid(callback){
@@ -695,11 +774,13 @@ export class Chord extends Element {
             // construct from the raw data.
             // Keep the original strign as much as possible.
             if(this.is_no_chord) code += "N.C.";
-            if(this.note_base) code += this.note_base;
-            if(this.sharp_flat) code += this.sharp_flat;
+            if(this.german_root) code += this.german_root;
+            else if(this.note_base) code += this.note_base;
+            if(this.sharp_flat && !this.german_root) code += this.sharp_flat;
             if(this.mid_elems) code += Chord.chordMidSerialize(this.mid_elems)[1];
-            if(this.base_note_base) code += ("/"+this.base_note_base);
-            if(this.base_sharp_flat) code += this.base_sharp_flat;
+            if(this.german_bass) code += ("/"+this.german_bass);
+            else if(this.base_note_base) code += ("/"+this.base_note_base);
+            if(this.base_sharp_flat && !this.german_bass) code += this.base_sharp_flat;
             if(this.note_group_list){
                 if(this.note_group_list[0].note_profiles){
                     // note

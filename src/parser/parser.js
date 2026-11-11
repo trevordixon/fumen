@@ -39,10 +39,11 @@ var TOKEN_PERIOD = 42; // .
 
 // ^, Δ, ø and ° appear in common chord spellings (C^7, CΔ7, Cø, Co7 as C°7); `C^7` used to
 // stop the whole chart with INVALID_TOKEN_DETECTED.
-var WORD_DEFINIITON_GENERAL = /^(\w[\w¥.,\-+#:^Δø°]*)/;
+// ♯ and ♭ are what a phone keyboard or a pasted chart gives; they read as # and b (Chord).
+var WORD_DEFINIITON_GENERAL = /^(\w[\w¥.,\-+#♯♭:^Δø°]*)/;
 var WORD_DEFINITION_IN_REHARSAL_MARK = /^[^[\]]*/;
 var WORD_DEFINITION_IN_LOOP_IND_GENERIC = /^[^[\]]*/;
-var WORD_DEFINITION_CHORD_SYMBOL = /^[\w.,\-+#/():~^Δø°]*/;
+var WORD_DEFINITION_CHORD_SYMBOL = /^[\w.,\-+#♯♭/():~^Δø°]*/;
 
 export class Parser {
     /**
@@ -1020,6 +1021,7 @@ export class Parser {
                 if (loop_cnt >= 1000) break;
             }
 
+            common.Chord.applyGermanNoteNames(track);
             return track;
         }catch(e){
             if (!this.options || !this.options.silentErrors) {
