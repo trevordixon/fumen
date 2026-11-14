@@ -4,6 +4,9 @@ export {
   parseWithDiagnostics,
   tokenize,
   createFumenRenderer,
+  renderToSvg,
+  renderToDrawings,
+  embeddedTextFonts,
   ParserCompat as Parser,
   DefaultRendererCompat as DefaultRenderer
 } from "./api/public-api";
@@ -28,8 +31,13 @@ export type {
   RendererFacade,
   RendererOptions,
   RenderResult,
+  RenderSurface,
   RenderTarget
 } from "./api/types";
+export type { EmbeddedTextFont, RenderedDrawing } from "./api/public-api";
+
+export { SvgCanvas, SvgContext2D, CanvasTextMeasurer, setTextMeasurer } from "./renderer/svg_canvas";
+export type { SvgCanvasOptions, SvgCommand, SvgDrawing, SvgTextMetrics, TextMeasurer } from "./renderer/svg_canvas";
 
 export { setupHiDPICanvas } from "./renderer/graphic";
 

@@ -1,6 +1,7 @@
 import * as fonts from "./fonts";
 import * as petalumaFonts from "./fonts_petaluma";
 import * as petalumaTextFonts from "./petaluma_text_fonts";
+import { SvgCanvas, hostTextMeasurer, textMeasurerGeneration } from "./svg_canvas";
 
 var G_memCanvasStore = {}; // refered by ratio&zoom
 //var G_memCanvas = null;
@@ -289,21 +290,36 @@ export function fontDesc(fsize,confs,textRenderConfig){ //fontfamily,bold) {
     return fontDescSingle(fsize, merged, config.defaultTextSizeScale);
 }
 
+/**
+ * A canvas to lay out and measure on. In a browser it's a real canvas, as before. Where a host
+ * measures text (setTextMeasurer), or there's no DOM at all (JavaScriptCore, QuickJS), it's an
+ * SvgCanvas, which measures through the host's measurer.
+ */
+export function createScratchCanvas(){
+    if (hostTextMeasurer() === null && typeof document !== "undefined" && document && typeof document.createElement === "function") {
+        return document.createElement("canvas");
+    }
+    return new SvgCanvas();
+}
+
+function measuringCanvas(ratio, zoom){
+    let memkey = ratio + "/" + zoom + "/" + textMeasurerGeneration();
+    if (!(memkey in G_memCanvasStore)) {
+        let memCanvas = createScratchCanvas();
+        setupHiDPICanvas(memCanvas, G_mem_Canvas_size[0], G_mem_Canvas_size[1], ratio, zoom);
+        G_memCanvasStore[memkey] = memCanvas;
+    }
+    return G_memCanvasStore[memkey];
+}
+
 export function getCharProfile(fsize,confs,ratio,zoom,textRenderConfig) {
     let font = fontDesc(fsize,confs,textRenderConfig);
-    let refstr = font+"/"+ratio+"/"+zoom;
+    let refstr = font+"/"+ratio+"/"+zoom+"/"+textMeasurerGeneration();
 
     let yroom = null;
     if (refstr in G_y_char_offsets) yroom = G_y_char_offsets[refstr];
     else {
-        let memkey = ratio+"/"+zoom;
-        if (!(memkey in G_memCanvasStore)) {
-            let memCanvas = document.createElement("canvas");
-            setupHiDPICanvas(memCanvas, G_mem_Canvas_size[0], G_mem_Canvas_size[1], ratio, zoom);
-            //console.log("Pixel ratio = " + ratio + " , zoom = " + zoom);
-            G_memCanvasStore[memkey] = memCanvas;
-        }
-        yroom = judgeTextYPosOffset(G_memCanvasStore[memkey], font); //bold, fontfamily, fsize);
+        yroom = judgeTextYPosOffset(measuringCanvas(ratio, zoom), font); //bold, fontfamily, fsize);
         G_y_char_offsets[refstr] = yroom;
     }
 
@@ -530,7 +546,7 @@ export function setDefaultTextRenderConfig(config){
 
 export function getPixelRatio(canvas) {
     var ctx = canvas.getContext("2d"),
-        dpr = window.devicePixelRatio || 1;
+        dpr = (typeof window !== "undefined" && window && window.devicePixelRatio) || 1;
     let bsr =
         ctx.webkitBackingStorePixelRatio ||
         ctx.mozBackingStorePixelRatio ||
@@ -567,9 +583,32 @@ export function setupHiDPICanvas(canvas, w, h, ratio, zoom, zoomChangeOnly=false
     return { ratio: ratio };
 }
 
+/**
+ * judgeTextYPosOffset from text metrics instead of pixels, for an SvgCanvas: the same numbers,
+ * without drawing "D" and scanning for its ink.
+ */
+function measuredTextYPosOffset(measurer, font, code, ratio, zoom){
+    const imgheight = 300 / ratio / zoom;
+    const metrics = measurer.measureText(font, code);
+    const ascent = metrics.actualBoundingBoxAscent || 0;
+    const descent = metrics.actualBoundingBoxDescent || 0;
+    // How far the glyph's top is below the "top" baseline the renderer draws text from.
+    const top_room = Math.max(0, measurer.alphabeticOffset(font, "top") - ascent);
+    const height = ascent + descent;
+    return {
+        top_room: top_room,
+        height: height,
+        bottom_room: Math.max(0, imgheight - top_room - height),
+        imgheight: imgheight
+    };
+}
+
 function judgeTextYPosOffset(canvas, font, code)/*bold, fontfamily, fontsize) */{
-    var context = canvas.getContext("2d");
     if(!code) code = "D";
+    if (canvas instanceof SvgCanvas) {
+        return measuredTextYPosOffset(canvas.measurer, font, code, canvas.ratio || 1, canvas.zoom || 1);
+    }
+    var context = canvas.getContext("2d");
 
     var bs = 300; //fontsize * G_pixelRatio;
 
@@ -666,16 +705,8 @@ export function getFontSizeFromHeight(height, fontfamily, code, tol, opt, ratio,
     // TODO : Binary search
     let canvas_to_use = opt?opt.canvas:null;
 
-    let memkey = ratio + "/" + zoom;
-    if (!(memkey in G_memCanvasStore)) {
-        let memCanvas = document.createElement("canvas");
-        setupHiDPICanvas(memCanvas, G_mem_Canvas_size[0], G_mem_Canvas_size[1], ratio, zoom);
-        //console.log("Pixel ratio = " + ratio, + " , Zoom = " + zoom);
-        G_memCanvasStore[memkey] = memCanvas;
-    }
-
     if(!canvas_to_use)
-        canvas_to_use = G_memCanvasStore[memkey];
+        canvas_to_use = measuringCanvas(ratio, zoom);
     
     let maxLoop = 100;
     var curLow = 1;
@@ -836,6 +867,53 @@ export function preloadImages(imageurls) {
     });
 }
 
+const BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+function decodeBase64(text){
+    if (typeof atob === "function") return atob(text);
+    let out = "";
+    let bits = 0;
+    let value = 0;
+    for (let i = 0; i < text.length; ++i) {
+        const index = BASE64_CHARS.indexOf(text[i]);
+        if (index < 0) continue; // padding, whitespace
+        value = (value << 6) | index;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out += String.fromCharCode((value >> bits) & 0xff);
+        }
+    }
+    return out;
+}
+
+/** The size of an SVG data URL image, from its root element's width and height. */
+function svgDataUrlSize(dataURL){
+    const comma = dataURL.indexOf(",");
+    if (comma < 0) return null;
+    const header = dataURL.slice(0, comma);
+    const body = dataURL.slice(comma + 1);
+    const svg = header.endsWith(";base64") ? decodeBase64(body) : decodeURIComponent(body);
+    const root = /<svg\b[^>]*>/.exec(svg);
+    if (!root) return null;
+    const attr = (name)=>{
+        const m = new RegExp("\\s" + name + "=[\"']([0-9.]+)").exec(root[0]);
+        return m ? parseFloat(m[1]) : NaN;
+    };
+    const width = attr("width");
+    const height = attr("height");
+    return Number.isFinite(width) && Number.isFinite(height) ? { width: width, height: height } : null;
+}
+
+function glyphWithoutDom(glyphname, glyph){
+    const bbox = glyph.bbox;
+    const size = (bbox && typeof bbox.width === "number" && typeof bbox.height === "number")
+        ? { width: bbox.width, height: bbox.height }
+        : svgDataUrlSize(glyph.dataURL);
+    if (!size) throw new Error("Can't tell the size of music glyph " + glyphname);
+    return { src: glyph.dataURL, width: size.width, height: size.height, fumenGlyph: glyphname };
+}
+
 export function PreloadJsonFont(request={type:"bravura"}) {
     const normalized = normalizeMusicFontRequest(request);
     const fontKey = normalized.fontKey;
@@ -846,8 +924,14 @@ export function PreloadJsonFont(request={type:"bravura"}) {
 
     const promises = [];
     for(let glyphname in normalized.fontData){
+        if (typeof Image === "undefined") {
+            // No DOM (a bare JS engine): the glyph is its data and size. SvgCanvas draws it from those.
+            promises.push(Promise.resolve({ img: glyphWithoutDom(glyphname, normalized.fontData[glyphname]), glyphname: glyphname }));
+            continue;
+        }
         let p = new Promise((resolve,reject)=>{
             let img = new Image();
+            img.fumenGlyph = glyphname; // so SvgCanvas can say which glyph it draws
             img.src = normalized.fontData[glyphname].dataURL;
             img.onload = function() {
                 resolve({ img: img, glyphname: glyphname });

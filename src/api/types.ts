@@ -42,11 +42,16 @@ export interface ParseOptions {
   readonly includeTokens?: boolean;
 }
 
+import type { SvgCanvas } from "../renderer/svg_canvas";
+
+/** Something the renderer can draw on: a canvas, or an SvgCanvas to get SVG out. */
+export type RenderSurface = HTMLCanvasElement | SvgCanvas;
+
 export interface RenderTargetProvider {
-  (): HTMLCanvasElement | Promise<HTMLCanvasElement>;
+  (): RenderSurface | Promise<RenderSurface>;
 }
 
-export type RenderTarget = HTMLCanvasElement | RenderTargetProvider;
+export type RenderTarget = RenderSurface | RenderTargetProvider;
 
 export interface RendererOptions {
   readonly defaultParams?: Record<string, unknown>;

@@ -143,14 +143,14 @@ var SR_RENDER_PARAM = {
  * Callback function when new canvas is requested by renderer.
  * @global
  * @callback canvasProvider
- * @return {(HTMLElement|Promise<HTMLElement>)} HTML canvas element
+ * @return {(HTMLElement|import("./svg_canvas").SvgCanvas|Promise<HTMLElement|import("./svg_canvas").SvgCanvas>)} HTML canvas element, or an SvgCanvas to get SVG
  */
 
 export class DefaultRenderer extends Renderer {
 
     /**
      * Default Renderer class for HTML canvas element
-     * @param {(HTMLElement|canvasProvider)} canvas - HTML canvas element to draw the image. Or, callback function which returns HTML canvas element.
+     * @param {(HTMLElement|import("./svg_canvas").SvgCanvas|canvasProvider)} canvas - HTML canvas element (or SvgCanvas) to draw the image. Or, callback function which returns one.
      * @param {RenderParam} [param={}] - Parameter for the rednering. If not specified, internal default values are used.
      */
     constructor(canvas, param={}) {
@@ -1159,7 +1159,7 @@ export class DefaultRenderer extends Renderer {
         if (!this.memCanvas) {
             // Canvas on memory for screening
             // TODO : Canvas height 400 is enough ?
-            this.memCanvas = document.createElement("canvas");
+            this.memCanvas = graphic.createScratchCanvas();
             graphic.setupHiDPICanvas(
                 this.memCanvas,
                 param.paper_width / param.text_size,
