@@ -223,10 +223,18 @@ async function run() {
   assert.ok(analyzed.diagnostics.length > 0, "Expected analyzed diagnostics");
   assert.equal(markerWrites.length, 1, "Expected marker write from analyze helper");
 
-  // Transposed spellings read like a lead sheet: no Cb/Fb/E#/B# outside the keys that use them.
+  // Chords move by the same number of letters as the key, so the intervals between them read as
+  // written: a fourth stays a fourth (G to C is Gb to Cb or F# to B, never Gb to B).
   const Chord = umd.Chord;
-  assert.equal(Chord.getTranpsoedNote(1, "AUTO", "C", "B", "b"), "B", "Bb up a half step in C is B, not Cb");
-  assert.equal(Chord.getTranpsoedNote(1, "AUTO", "C", "E", "b"), "E", "Eb up a half step is E, not Fb");
+  const moved = (list, t, h, k) => list.map((c) => Chord.transposeSymbol(c, t, h, k)).join(" ");
+  assert.equal(moved(["G", "C"], -1, "FLAT", "G"), "Gb Cb");
+  assert.equal(moved(["G", "C"], -1, "SHARP", "G"), "F# B");
+  assert.equal(moved(["G", "C"], -1, "AUTO", "D"), "Gb Cb", "in Db too: Cb is its flat seventh");
+  assert.equal(moved(["Bb", "Eb"], 1, "FLAT", "C"), "Cb Fb");
+  assert.equal(moved(["F#", "B"], -1, "AUTO", "C"), "E# A#");
+  assert.equal(moved(["Bb/Ab"], 8, "AUTO", "Bb"), "Gb/Fb", "a slash bass keeps its interval too");
+  // Only a double flat or sharp steps to its plain neighbour: Db to D, not Db to Ebb.
+  assert.equal(moved(["C", "Db"], 1, "FLAT", "C"), "Db D");
   assert.equal(Chord.getTranpsoedNote(6, "AUTO", "C", "F", ""), "Cb", "F in C moved to Gb is Cb (IV of Gb)");
   assert.equal(Chord.getTranpsoedNote(2, "AUTO", "C", "G", ""), "A", "plain notes stay plain");
 
@@ -249,6 +257,19 @@ async function run() {
   assert.equal(Chord.getTranpsoedNote(1, "AUTO", "G", "D", ""), "Eb", "G up a half step: its V is Eb");
   assert.equal(Chord.getTranpsoedNote(0, "FLAT", "Abm", "D", "b"), "Db", "Abm, not moved, keeps its flats");
   assert.equal(Chord.getTranpsoedNote(0, "AUTO", "Gb", "F", "b"), "Fb", "a written Fb stays");
+
+  // Chord symbols and key names for whatever sits beside a chart: the chart's own spelling.
+  assert.equal(Chord.transposeSymbol("Bb7/F", 2, "AUTO", "Bb"), "C7/G");
+  assert.equal(Chord.transposeSymbol("F#m7b5", -1, "AUTO", "C"), "E#m7b5");
+  assert.equal(Chord.transposeSymbol("Ab/C", 1, "AUTO", "Ab"), "A/C#", "a slash chord keeps its shape");
+  assert.equal(Chord.transposeSymbol("Cmaj7", "Db", "AUTO", "C"), "Dbmaj7", "to a named key; the quality as written");
+  assert.equal(Chord.transposeSymbol("B\u266D7", 0, "AUTO", "F"), "B\u266D7");
+  assert.equal(Chord.transposeSymbol("B\u266D7", 2, "AUTO", "F"), "C7");
+  assert.equal(Chord.transposeSymbol("E\u266Dm", 2, "AUTO", "Gb"), "Fm");
+  assert.equal(Chord.transposeSymbol("/G", 2, "AUTO", "C"), "/A");
+  assert.equal(Chord.transposeSymbol("N.C.", 2, "AUTO", "C"), "N.C.", "not a chord: as it was");
+  assert.equal(Chord.transposeSymbol("^text", 2, "AUTO", "C"), "^text");
+  assert.deepEqual([Chord.transposeKey("Am", 3, "SHARP"), Chord.transposeKey("G", 1), Chord.transposeKey("H", 1), Chord.transposeKey("", 1)], ["Cm", "Ab", null, null]);
 
 
   console.warn = originalWarn;

@@ -657,31 +657,9 @@ export class Chord extends Element {
     getChordStrBase(tranpose, half_type, key) {
         if (!this.is_valid_chord) return [false, this.chord_str]; // Not chord or invalid chord notation
 
-        var tranposed_note = null;
-        if (this.note_base !== undefined)
-            tranposed_note = this.getTranpsoedNote(
-                tranpose,
-                half_type,
-                key,
-                this.note_base,
-                this.sharp_flat
-            );
-        var transposed_base_note = null;
-        if (this.base_note_base !== undefined) {
-            transposed_base_note = this.getTranpsoedNote(
-                tranpose,
-                half_type,
-                key,
-                this.base_note_base,
-                this.base_sharp_flat
-            );
-            // A slash chord keeps its shape: the bass is the same interval above the new root as
-            // it was above the old one (Ab/C up a half step is A/C#, not A/Db).
-            if (tranposed_note) {
-                var kept = Chord.spellBassFrom(this.note_base, this.sharp_flat, this.base_note_base, this.base_sharp_flat, tranposed_note);
-                if (kept) transposed_base_note = kept;
-            }
-        }
+        var moved = Chord.transposedRootAndBass(tranpose, half_type, key, this.note_base, this.sharp_flat, this.base_note_base, this.base_sharp_flat);
+        var tranposed_note = moved[0];
+        var transposed_base_note = moved[1];
 
         if (this.german) {
             tranposed_note = Chord.germanName(tranposed_note);
@@ -691,9 +669,62 @@ export class Chord extends Element {
     }
 
     /**
+     * A chord's root and bass (either may be undefined) moved with the chart: [root, bass], null
+     * for one that isn't there. `transpose` is semitones or the key to move to; `key` the key the
+     * chart is written in. The one place a chord is spelled: charts draw with it, and so does
+     * anything else that shows a chord beside one (transposeSymbol).
+     */
+    static transposedRootAndBass(transpose, half_type, key, root, rootAcc, bass, bassAcc) {
+        var newRoot = null;
+        if (root !== undefined && root !== null)
+            newRoot = Chord.getTranpsoedNote(transpose, half_type, key, root, rootAcc);
+        var newBass = null;
+        if (bass !== undefined && bass !== null) {
+            newBass = Chord.getTranpsoedNote(transpose, half_type, key, bass, bassAcc);
+            // A slash chord keeps its shape: the bass is the same interval above the new root as
+            // it was above the old one (Ab/C up a half step is A/C#, not A/Db).
+            if (newRoot) {
+                var kept = Chord.spellBassFrom(root, rootAcc, bass, bassAcc, newRoot);
+                if (kept) newBass = kept;
+            }
+        }
+        return [newRoot, newBass];
+    }
+
+    /**
+     * A chord symbol written as text ("Bb7/F", "F#m7b5", "/G") moved with a chart, its root and
+     * bass spelled exactly as the chart's own chords are; the quality stays as written. For chord
+     * names shown beside a chart (an app's notation parts, a key picker). `transpose` is semitones
+     * or the key to move to, `key` the key it's written in. Text that isn't a chord symbol comes
+     * back as it was.
+     */
+    static transposeSymbol(symbol, transpose, half_type, key) {
+        if (typeof symbol !== "string") return symbol;
+        var m = /^(?:([A-G])([#b\u266F\u266D]?))?([^/]*)(?:\/([A-G])([#b\u266F\u266D]?))?$/.exec(symbol);
+        if (!m || (!m[1] && !m[4])) return symbol;
+        var ascii = function (a) { return a == "\u266F" ? "#" : a == "\u266D" ? "b" : (a || undefined); };
+        var moved = Chord.transposedRootAndBass(transpose, half_type || "AUTO", key, m[1], ascii(m[2]), m[4], ascii(m[5]));
+        // Accidentals come back the way they were typed (♯/♭ or #/b).
+        var symbols = /[\u266F\u266D]/.test(symbol);
+        var typed = function (note) { return symbols ? note.replace("#", "\u266F").replace(/^([A-G])b/, "$1\u266D") : note; };
+        return (moved[0] ? typed(moved[0]) : "") + m[3] + (moved[1] ? "/" + typed(moved[1]) : "");
+    }
+
+    /**
+     * The key a chart in `key` is shown in when moved by `transpose` semitones, named as its
+     * chords are spelled ("Eb", "F#m"): `half_type` AUTO, SHARP or FLAT picks C# or Db, F# or Gb.
+     * Null when `key` isn't a key. For labels: a label made any other way can name a key the
+     * chart isn't drawn in.
+     */
+    static transposeKey(key, transpose, half_type) {
+        if (typeof key !== "string" || !/^\s*[A-G]/.test(key)) return null;
+        return Chord.getTransposedKeyFromOffset(key, Math.round(Number(transpose) || 0), half_type || "AUTO");
+    }
+
+    /**
      * The bass of a slash chord spelled from its new root, keeping the interval: root Ab, bass C
-     * (a third up), new root A → C#. Null when that would need a double accidental or one of the
-     * hard-to-read Cb, Fb, E#, B# (the key-based spelling is used instead).
+     * (a third up), new root A → C#. Null when that would need a double accidental (the key-based
+     * spelling is used instead).
      */
     static spellBassFrom(root, rootAcc, bass, bassAcc, newRoot) {
         var letters = ["C", "D", "E", "F", "G", "A", "B"];
@@ -706,7 +737,6 @@ export class Chord extends Element {
         var target = (values[newRoot[0]] + acc(newRoot[1]) + semis + 24) % 12;
         var diff = ((target - values[letter]) % 12 + 18) % 12 - 6;
         var spelled = diff === 0 ? letter : diff === 1 ? letter + "#" : diff === -1 ? letter + "b" : null;
-        if (!spelled || ["Cb", "Fb", "E#", "B#"].indexOf(spelled) >= 0) return null;
         return spelled;
     }
 
@@ -1317,17 +1347,10 @@ export class Chord extends Element {
             }
         }
 
-        // Cb, Fb, E# and B# are right on paper but hard to read on a lead sheet: spell them as
-        // B, E, F and C unless the target key itself uses them (Bbm7b5 up a half step was
-        // shown as Cbm7b5 rather than Bm7b5).
-        var plain = { "Cb": "B", "Fb": "E", "E#": "F", "B#": "C" };
-        var keys_using = { "Cb": ["Gb", "Cb"], "Fb": ["Cb"], "E#": ["F#", "C#"], "B#": ["C#"] };
-        var spelled = newletter + acc;
-        if (spelled in plain && keys_using[spelled].indexOf(target_maj_key) < 0) {
-            return plain[spelled];
-        }
-
-        return spelled;
+        // Every chord moves by the same number of letters as the key does, so the intervals
+        // between chords read as they were written (G to C, a fourth, is Gb to Cb or F# to B,
+        // never Gb to B). Only a double sharp or flat steps to its plain neighbour (above).
+        return newletter + acc;
         
     }
 
