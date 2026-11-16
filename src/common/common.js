@@ -1245,6 +1245,7 @@ export class Chord extends Element {
         var note = note_base;
         if (sharp_flat) note += sharp_flat;
 
+        key = Chord.normalizeKey(key);
         var org_maj_key = key; 
 
         if(key in min_maj_map)
@@ -1256,28 +1257,27 @@ export class Chord extends Element {
 
             var base_value = note_values_2[org_maj_key];
             var tgt_value = (base_value + transpose + 12)%12;
+            var mode = String(half_type || "AUTO").toUpperCase();
 
-            var half_to_apply = null;
-            if(half_type.toUpperCase()  == "AUTO")
-                half_to_apply = keyclass_maj[org_maj_key]; // Use the similar key class as original key
-            else if(half_type.toUpperCase() == "SHARP")
-                half_to_apply = "#";
-            else if(half_type.toUpperCase() == "FLAT")
-                half_to_apply = "b";
-            else
-                half_to_apply = half_type; // "#" or "b" directly is OK.
-
-            var tgt_key_cand = note_values_1[tgt_value];
-            if(tgt_key_cand[0]) target_maj_key = tgt_key_cand[0];
-            else target_maj_key = tgt_key_cand[ half_to_apply == "b" ? 1 : 2];
+            if (tgt_value === base_value && (mode == "AUTO" || mode == "SHARP" && org_maj_key.indexOf("#") >= 0 || mode == "FLAT" && org_maj_key.indexOf("b") >= 0)) {
+                // Not moved, and the key already spelled the way asked: as written.
+                target_maj_key = org_maj_key;
+            } else {
+                var tgt_key_cand = note_values_1[tgt_value];
+                if(tgt_key_cand[0]) target_maj_key = tgt_key_cand[0];
+                else target_maj_key = Chord.pickMajorKey(tgt_key_cand[1], tgt_key_cand[2], mode, keyclass_maj[org_maj_key]);
+            }
 
         }else {
             // Key is specified directly
-            target_maj_key = transpose;
+            target_maj_key = Chord.normalizeKey(transpose);
             if(target_maj_key in min_maj_map)
                 target_maj_key = min_maj_map[target_maj_key]; // minor is converted to maj key
             transpose = ((note_values_2[target_maj_key] - note_values_2[org_maj_key])+12)%12;
         }
+
+        // Not moved at all: the chord as written (an E♯ or B♯ the writer chose stays).
+        if (target_maj_key === org_maj_key && transpose % 12 === 0) return note;
 
         //console.log("Orignal key = "+org_maj_key + " Target key = " + target_key);
 
@@ -1331,7 +1331,37 @@ export class Chord extends Element {
         
     }
 
+    /**
+     * The key a chart is moved into when its tonic is a black key, named by `mode` (AUTO, SHARP,
+     * FLAT, or "#"/"b"). Only keys that exist: D#, G# and A# major (9, 8 and 10 sharps) never; Eb,
+     * Ab and Bb instead. C# or Db, F# or Gb as asked; AUTO takes Db (5 flats over C#'s 7) and,
+     * for the even F#/Gb, the original key's side.
+     */
+    static pickMajorKey(flatName, sharpName, mode, originalSide) {
+        var real = { "Db": true, "C#": true, "Gb": true, "F#": true, "Eb": true, "Ab": true, "Bb": true };
+        if (!real[sharpName]) return flatName;
+        var side = mode == "SHARP" || mode == "#" ? "#" : mode == "FLAT" || mode == "b" ? "b" : null;
+        if (!side) side = flatName == "Db" ? "b" : (originalSide || "b");
+        return side == "#" ? sharpName : flatName;
+    }
+
+    /**
+     * A %KEY as fumen's tables name it: "B♭" → "Bb", "Em7" → "Em", "Bbmaj7" → "Bb", and the minor
+     * keys whose relative major would need a double flat (Gbm, Cbm, Fbm) as their sharp or plain
+     * twin (F#m, Bm, Em). Anything that isn't a key is returned as it was.
+     */
+    static normalizeKey(key) {
+        if (typeof key !== "string") return key;
+        var m = /^\s*([A-G])([#b\u266F\u266D]?)(m(?:in)?(?!aj))?/.exec(key);
+        if (!m) return key;
+        var acc = m[2] == "\u266F" ? "#" : m[2] == "\u266D" ? "b" : m[2];
+        var name = m[1] + acc + (m[3] ? "m" : "");
+        var twins = { "Gbm": "F#m", "Cbm": "Bm", "Fbm": "Em", "Dbm": "C#m", "Fb": "E", "E#": "F", "B#": "C", "E#m": "Fm", "B#m": "Cm" };
+        return twins[name] || name;
+    }
+
     static getTransposedKeyFromOffset(key, transpose, half_type){
+        key = Chord.normalizeKey(key);
 
         let is_minor = key[key.length-1] == "m";
         let note = (is_minor ? key.substr(0, key.length-1) : key);

@@ -230,6 +230,26 @@ async function run() {
   assert.equal(Chord.getTranpsoedNote(6, "AUTO", "C", "F", ""), "Cb", "F in C moved to Gb is Cb (IV of Gb)");
   assert.equal(Chord.getTranpsoedNote(2, "AUTO", "C", "G", ""), "A", "plain notes stay plain");
 
+  // The key a chart moves into is one that exists: never D#, G# or A# major.
+  const key = (k, t, h) => Chord.getTransposedKeyFromOffset(k, t, h);
+  assert.equal(key("G", 1, "AUTO"), "Ab", "G up a half step is Ab, not G# (8 sharps)");
+  assert.equal(key("C", 3, "SHARP"), "Eb", "Sharps can't make D# major");
+  assert.equal(key("Am", 3, "SHARP"), "Cm", "Am up 3 is Cm, its chords in Eb");
+  assert.equal(key("Em", 1, "AUTO"), "Fm");
+  assert.deepEqual([key("C", 1, "FLAT"), key("C", 1, "SHARP"), key("C", 1, "AUTO")], ["Db", "C#", "Db"]);
+  assert.deepEqual([key("C", 6, "AUTO"), key("G", 11, "AUTO")], ["Gb", "F#"], "F#/Gb: the original key's side");
+  assert.deepEqual([key("Dm", 1, "FLAT"), key("Dm", 1, "SHARP")], ["Ebm", "D#m"]);
+  assert.deepEqual([key("C#", 0, "AUTO"), key("C#", 0, "FLAT")], ["C#", "Db"]);
+  // Keys written loosely still work.
+  assert.deepEqual([key("B\u266D", 0, "AUTO"), key("Em7", 0, "AUTO"), key("Bbmaj7", 2, "AUTO"), key("Gbm", 0, "AUTO")], ["Bb", "Em", "C", "F#m"]);
+  // Chords keep the writer's spelling when nothing moves; in a moved chart they're spelled in its key.
+  assert.equal(Chord.getTranpsoedNote(0, "AUTO", "D", "E", "#"), "E#", "C#7/E# in D keeps its E#");
+  assert.equal(Chord.getTranpsoedNote(0, "FLAT", "Gb", "C", "b"), "Cb", "Cb7 in Gb, with flats, stays Cb7");
+  assert.equal(Chord.getTranpsoedNote(0, "FLAT", "D", "F", "#"), "F#", "F#m in D stays F#m with flats");
+  assert.equal(Chord.getTranpsoedNote(1, "AUTO", "G", "D", ""), "Eb", "G up a half step: its V is Eb");
+  assert.equal(Chord.getTranpsoedNote(0, "FLAT", "Abm", "D", "b"), "Db", "Abm, not moved, keeps its flats");
+  assert.equal(Chord.getTranpsoedNote(0, "AUTO", "Gb", "F", "b"), "Fb", "a written Fb stays");
+
 
   console.warn = originalWarn;
   console.log("API smoke tests passed");
