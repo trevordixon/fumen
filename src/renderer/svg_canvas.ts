@@ -608,15 +608,52 @@ export interface SvgCanvasOptions {
   readonly measurer?: TextMeasurer;
 }
 
+/**
+ * A host's measurer with its answers kept. A render measures the same few strings over and over
+ * (each chord letter, "7", "m", "♭"; every text once to lay out and again to draw), around 16
+ * times each, and a host's measurer is a call out of the JS engine. Kept until setTextMeasurer is
+ * called again, so a chart redrawn at another size or in another key measures nearly nothing.
+ */
+class CachingTextMeasurer implements TextMeasurer {
+  private static readonly LIMIT = 20000;
+  private readonly widths = new Map<string, SvgTextMetrics>();
+  private readonly offsets = new Map<string, number>();
+
+  constructor(private readonly host: TextMeasurer) {}
+
+  measureText(font: string, text: string): SvgTextMetrics {
+    const key = font + "\u0000" + text;
+    let metrics = this.widths.get(key);
+    if (metrics === undefined) {
+      metrics = this.host.measureText(font, text);
+      if (this.widths.size >= CachingTextMeasurer.LIMIT) this.widths.clear();
+      this.widths.set(key, metrics);
+    }
+    return metrics;
+  }
+
+  alphabeticOffset(font: string, baseline: string): number {
+    const key = font + "\u0000" + baseline;
+    let offset = this.offsets.get(key);
+    if (offset === undefined) {
+      offset = this.host.alphabeticOffset(font, baseline);
+      if (this.offsets.size >= CachingTextMeasurer.LIMIT) this.offsets.clear();
+      this.offsets.set(key, offset);
+    }
+    return offset;
+  }
+}
+
 let sharedMeasurer: CanvasTextMeasurer | null = null;
 let hostMeasurer: TextMeasurer | null = null;
 
 /**
  * Makes fumen measure all text with `measurer` instead of a browser canvas. A host without a DOM
  * (JavaScriptCore, QuickJS) must call this before rendering; pass null to go back to the canvas.
+ * Measurements are kept until this is called again: call it again if the host's fonts change.
  */
 export function setTextMeasurer(measurer: TextMeasurer | null): void {
-  hostMeasurer = measurer;
+  hostMeasurer = measurer === null ? null : new CachingTextMeasurer(measurer);
   measurerGeneration += 1;
 }
 

@@ -1107,6 +1107,7 @@ export class DefaultRenderer extends Renderer {
 
         // Make y-strack elements, and mark the rehearsal mark position
         var y_stacks = [];
+        let shared_row_param = null;
 
         let next_reharsal_group_index = 0;
         meas_row_list.forEach((e,i)=>{
@@ -1126,7 +1127,10 @@ export class DefaultRenderer extends Renderer {
 
             // Determine params to be applied for this. 
             // As of now, 
-            var param_for_row = common.deepcopy(param); 
+            // A row with no PARAM of its own shares one copy of the parameters with the others
+            // (copying them for every row was a good part of a render).
+            const row_has_param = e.meas_row.some(m => m.getVariable("PARAM"));
+            var param_for_row = row_has_param ? common.deepcopy(param) : (shared_row_param ??= common.deepcopy(param));
             let param_for_row_alt = false;
             e.meas_row.forEach(m=>{
                 let mparam = m.getVariable("PARAM");
@@ -2104,10 +2108,10 @@ export class DefaultRenderer extends Renderer {
             rest_or_long_rests_detected |= e instanceof common.Rest;
         });
 
-        var tmpl = { elems: [], groupedChordsLen: 0, renderprop:{} };
+        const newGroup = () => ({ elems: [], groupedChordsLen: 0, renderprop: {} });
         var groupedBodyElems = [];
 
-        if (body_elements.length > 0) groupedBodyElems.push(common.deepcopy(tmpl));
+        if (body_elements.length > 0) groupedBodyElems.push(newGroup());
         var gbei = 0;
 
         // Grouping the chord and notes among which the x-axis rooms are shared
@@ -2135,7 +2139,7 @@ export class DefaultRenderer extends Renderer {
                 // Keep in the same group
             } else {
                 // flush
-                groupedBodyElems.push(common.deepcopy(tmpl));
+                groupedBodyElems.push(newGroup());
                 ++gbei;
                 chord_name_str = this_chord_str;
             }

@@ -47,8 +47,10 @@ export function charIsIn(c, chars) {
 }
 
 export function charStartsWithAmong(s, strlist) {
+    // startsWith, not indexOf(...) == 0: indexOf scans the whole rest of the chart when the token
+    // isn't at its start, which made tokenizing quadratic in the chart's length.
     for (var i = 0; i < strlist.length; ++i)
-        if (s.indexOf(strlist[i]) == 0) return { index: i, s: strlist[i] };
+        if (s.startsWith(strlist[i])) return { index: i, s: strlist[i] };
     return null;
 }
 

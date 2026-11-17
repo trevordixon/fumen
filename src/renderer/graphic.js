@@ -313,7 +313,10 @@ function measuringCanvas(ratio, zoom){
 }
 
 export function getCharProfile(fsize,confs,ratio,zoom,textRenderConfig) {
-    let font = fontDesc(fsize,confs,textRenderConfig);
+    return charProfileForFont(fontDesc(fsize,confs,textRenderConfig), ratio, zoom);
+}
+
+function charProfileForFont(font, ratio, zoom) {
     let refstr = font+"/"+ratio+"/"+zoom+"/"+textMeasurerGeneration();
 
     let yroom = null;
@@ -355,7 +358,7 @@ export function canvasText(canvas, x, y, text, fsize, align, xwidth, notdraw, op
         context.textBaseline = tb[align[1]]; //tb[align[1]];
     
     }else{
-        yroom = getCharProfile(fsize, opt && opt.font, canvas.ratio,canvas.zoom, textRenderConfig);
+        yroom = charProfileForFont(font, canvas.ratio, canvas.zoom);
 
 
         if (align[1] == "t") {
@@ -409,7 +412,7 @@ export function canvasText(canvas, x, y, text, fsize, align, xwidth, notdraw, op
     // TODO : For backward compatibility, width is kept as is. Remove in the later.
     let xadjust = {"left":0, "center":-width/2, "right":-width}[ta[align[0]]];
     if(!yroom){
-        yroom = getCharProfile(fsize, opt && opt.font, canvas.ratio,canvas.zoom, textRenderConfig);
+        yroom = charProfileForFont(font, canvas.ratio, canvas.zoom);
     }
     var ret = { width: width, bb:new BoundingBox(x + xadjust, y + yadjust, width, yroom.height) };
     Object.assign(ret, yroom);
