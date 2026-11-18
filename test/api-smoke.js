@@ -163,6 +163,17 @@ async function run() {
   assert.equal(strict.ast, null, "Expected strict parse to not return partial ast");
   assert.ok(strict.diagnostics.length >= 1, "Expected strict diagnostics");
 
+  // A chord it can't read draws as text: still ok, with a warning at the chord. Quoted text and
+  // N.C. aren't chords and get none.
+  const unreadable = esm.parseWithDiagnostics(`| C Fzz:4 :4 :2 | "Solos" | N.C. |\n| Cmaj9#13b |`, { mode: "strict" });
+  assert.equal(unreadable.ok, true, "Expected an unreadable chord to still draw");
+  assert.deepEqual(
+    unreadable.diagnostics.map((d) => [d.code, d.severity, d.span.start.line, d.span.start.column, d.span.end.column]),
+    [["FUMEN020", "warning", 1, 5, 8], ["FUMEN020", "warning", 2, 3, 12]],
+    "Expected a warning at each unreadable chord"
+  );
+  assert.match(unreadable.diagnostics[0].message, /"Fzz"/);
+
   const tokenKinds = new Set(esm.tokenize(`%TITLE="X"\n[Intro]\n| Cb:4 r:2. |`).map((token) => token.kind));
   assert.ok(tokenKinds.has("directive"), "Expected directive token");
   assert.ok(tokenKinds.has("section"), "Expected section token");

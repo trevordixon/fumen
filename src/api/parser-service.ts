@@ -296,6 +296,68 @@ function collectDiagnostics(code: string, legacy: ReturnType<typeof parseWithLeg
   return dedupeDiagnostics(staticDiagnostics);
 }
 
+// A chord whose root reads but whose rest doesn't ("Fzz", "Cmaj9#13b") still draws: the parser
+// keeps it verbatim as text (Chord.is_valid_chord = false). That's rarely what was meant, so it's a
+// warning at the chord. Quoted text and N.C. have no root and are never reported.
+function collectUnreadableChords(node: unknown, names: Set<string>): void {
+  if (typeof node !== "object" || node === null) {
+    return;
+  }
+  const record = node as Record<string, unknown>;
+  const name = record["chord_name_str"];
+  if (record["is_valid_chord"] === false && record["is_no_chord"] !== true
+    && typeof record["note_base"] === "string" && record["note_base"].length > 0
+    && typeof name === "string" && name.length > 0) {
+    names.add(name);
+  }
+  const children = record["childNodes"];
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      collectUnreadableChords(child, names);
+    }
+  }
+}
+
+const CHORD_PART_KINDS: ReadonlySet<string> = new Set(["chord-quality", "chord-bass"]);
+
+function unreadableChordDiagnostics(code: string, track: TrackLike | null): readonly ParserDiagnostic[] {
+  if (track === null) {
+    return [];
+  }
+  const names = new Set<string>();
+  collectUnreadableChords(track, names);
+  if (names.size === 0) {
+    return [];
+  }
+  // Where each one is: a chord root and the quality and bass right after it, as the editor colours them.
+  const tokens = tokenizeFumen(code);
+  const sourceIndex = buildSourceIndex(code);
+  const diagnostics: ParserDiagnostic[] = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const root = tokens[i];
+    if (root === undefined || root.kind !== "chord-root") {
+      continue;
+    }
+    let end = root.span.end.offset;
+    let next = tokens[i + 1];
+    while (next !== undefined && CHORD_PART_KINDS.has(next.kind) && next.span.start.offset === end) {
+      end = next.span.end.offset;
+      i += 1;
+      next = tokens[i + 1];
+    }
+    const text = code.slice(root.span.start.offset, end);
+    if (names.has(text)) {
+      diagnostics.push({
+        code: "FUMEN020",
+        severity: "warning",
+        message: `Unreadable chord "${text}" is drawn as text`,
+        span: spanAt(sourceIndex, root.span.start.offset, end)
+      });
+    }
+  }
+  return diagnostics;
+}
+
 function shouldEmitDiagnostics(options: ParseOptions): boolean {
   return options.emitDiagnostics !== false;
 }
@@ -308,7 +370,9 @@ export function parseWithDiagnostics(code: string, options: ParseOptions = {}): 
   const normalizedCode = normalizeCode(code);
   const mode = resolveParseMode(options);
   const legacy = parseWithLegacy(normalizedCode);
-  const diagnostics = shouldEmitDiagnostics(options) ? collectDiagnostics(normalizedCode, legacy) : [];
+  const diagnostics = shouldEmitDiagnostics(options)
+    ? [...collectDiagnostics(normalizedCode, legacy), ...unreadableChordDiagnostics(normalizedCode, legacy.track)]
+    : [];
   const hasError = diagnostics.some((diagnostic) => diagnostic.severity === "error");
 
   const strictTrack = legacy.track;
