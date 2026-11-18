@@ -174,6 +174,19 @@ async function run() {
   );
   assert.match(unreadable.diagnostics[0].message, /"Fzz"/);
 
+  // Written lengths that don't fill the bar: a warning on the bar's line. Plain bars, pushes
+  // (which borrow from the bar before) and time changes are counted right.
+  const rhythm = esm.parseWithDiagnostics(`| C | Dm7:2 G7:2 | <:8 CM7:1 |\n| (6/8) C:4. :4. | C:2. D:8 | F7:4. F7:8 r:2 |`, { mode: "strict" });
+  assert.equal(rhythm.ok, true, "Expected a short bar to still draw");
+  assert.deepEqual(
+    rhythm.diagnostics.map((d) => [d.code, d.severity, d.span.start.line, d.message]),
+    [
+      ["FUMEN021", "warning", 2, "Bar 5 has 7 beats of rhythm in 6/8"],
+      ["FUMEN021", "warning", 2, "Bar 6 has 8 beats of rhythm in 6/8"]
+    ],
+    "Expected a warning at each bar whose rhythm doesn't fill it"
+  );
+
   const tokenKinds = new Set(esm.tokenize(`%TITLE="X"\n[Intro]\n| Cb:4 r:2. |`).map((token) => token.kind));
   assert.ok(tokenKinds.has("directive"), "Expected directive token");
   assert.ok(tokenKinds.has("section"), "Expected section token");

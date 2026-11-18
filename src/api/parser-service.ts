@@ -358,6 +358,172 @@ function unreadableChordDiagnostics(code: string, track: TrackLike | null): read
   return diagnostics;
 }
 
+// A bar whose written lengths (C:4 r:8 …) don't fill its time signature draws, but rarely as
+// meant: most often a length was left out or mistyped. Bars without lengths (plain chord grids,
+// ./., -2-) aren't checked. A push (<:8 C:1) borrows from the bar before, so the pushed chord's
+// shadow there and the push mark itself don't count.
+const WHOLE_NOTE_LENGTH = 17297280;
+
+interface LengthIndicatorLike {
+  readonly length?: unknown;
+}
+
+function noteGroupsLength(value: unknown): number | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  let total = 0;
+  for (const group of value) {
+    if (typeof group !== "object" || group === null) {
+      return null;
+    }
+    const indicator = (group as Record<string, unknown>)["lengthIndicator"] as LengthIndicatorLike | undefined;
+    if (typeof indicator?.length !== "number") {
+      return null;
+    }
+    total += indicator.length;
+  }
+  return total;
+}
+
+interface BarRhythm {
+  readonly index: number;
+  readonly total: number;
+  readonly numer: number;
+  readonly denom: number;
+}
+
+function constructorName(node: Record<string, unknown>): string {
+  const ctor = node["constructor"];
+  return typeof ctor === "function" ? ctor.name : "";
+}
+
+function collectBarRhythms(track: TrackLike): readonly BarRhythm[] {
+  const bars: BarRhythm[] = [];
+  let numer = 4;
+  let denom = 4;
+  let index = 0;
+  const visit = (node: unknown): void => {
+    if (typeof node !== "object" || node === null) {
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    const children = Array.isArray(record["childNodes"]) ? record["childNodes"] : [];
+    if (!/^_?Measure$/.test(constructorName(record))) {
+      for (const child of children) {
+        visit(child);
+      }
+      return;
+    }
+    let total = 0;
+    let lengthed = 0;
+    let unlengthed = 0;
+    for (const child of children) {
+      if (typeof child !== "object" || child === null) {
+        continue;
+      }
+      const element = child as Record<string, unknown>;
+      const name = constructorName(element);
+      if (/^_?Time$/.test(name)) {
+        const n = Number(element["numer"]);
+        const d = Number(element["denom"]);
+        if (n > 0 && d > 0) {
+          numer = n;
+          denom = d;
+        }
+        continue;
+      }
+      if (/^_?(Chord|Rest)$/.test(name)) {
+        if (element["isSyncopationShadowChord"] === true) {
+          continue;
+        }
+        const length = noteGroupsLength(element["note_group_list"]);
+        if (length === null) {
+          unlengthed += 1;
+        } else {
+          lengthed += 1;
+          total += length;
+        }
+      }
+    }
+    if (lengthed > 0 && unlengthed === 0) {
+      bars.push({ index, total, numer, denom });
+    }
+    index += 1;
+  };
+  visit(track);
+  return bars;
+}
+
+// The line each bar is on, counting barlines line by line ("./." and ".//." aren't barlines);
+// null when that count doesn't match the parsed bars.
+function barLines(code: string, barCount: number): readonly number[] | null {
+  const boundariesPerLine = new Map<number, number>();
+  for (const token of tokenizeFumen(code)) {
+    if (token.kind !== "barline" && token.kind !== "repeat") {
+      continue;
+    }
+    const text = code.slice(token.span.start.offset, token.span.end.offset);
+    if (text.startsWith(".")) {
+      continue;
+    }
+    const line = token.span.start.line;
+    boundariesPerLine.set(line, (boundariesPerLine.get(line) ?? 0) + 1);
+  }
+  const lines: number[] = [];
+  for (const [line, count] of [...boundariesPerLine.entries()].sort((a, b) => a[0] - b[0])) {
+    for (let i = 1; i < count; i += 1) {
+      lines.push(line);
+    }
+  }
+  return lines.length === barCount ? lines : null;
+}
+
+function formatBeats(beats: number): string {
+  const rounded = Math.round(beats * 1000) / 1000;
+  return `${rounded} beat${rounded === 1 ? "" : "s"}`;
+}
+
+function rhythmDiagnostics(code: string, track: TrackLike | null): readonly ParserDiagnostic[] {
+  if (track === null) {
+    return [];
+  }
+  const bars = collectBarRhythms(track);
+  const off = bars.filter((bar) => bar.total * bar.denom !== WHOLE_NOTE_LENGTH * bar.numer);
+  if (off.length === 0) {
+    return [];
+  }
+  let barCount = 0;
+  const countBars = (node: unknown): void => {
+    if (typeof node !== "object" || node === null) {
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    if (/^_?Measure$/.test(constructorName(record))) {
+      barCount += 1;
+    }
+    const children = record["childNodes"];
+    if (Array.isArray(children)) {
+      for (const child of children) {
+        countBars(child);
+      }
+    }
+  };
+  countBars(track);
+  const lines = barLines(code, barCount);
+  const sourceIndex = buildSourceIndex(code);
+  return off.map((bar) => {
+    const beats = (bar.total * bar.denom) / WHOLE_NOTE_LENGTH;
+    const line = lines?.[bar.index];
+    return {
+      code: "FUMEN021",
+      severity: "warning",
+      message: `Bar ${bar.index + 1} has ${formatBeats(beats)} of rhythm in ${bar.numer}/${bar.denom}`,
+      span: line === undefined ? spanAt(sourceIndex, 0, Math.min(1, code.length)) : spanForLine(sourceIndex, line)
+    };
+  });
+}
+
 function shouldEmitDiagnostics(options: ParseOptions): boolean {
   return options.emitDiagnostics !== false;
 }
@@ -371,7 +537,7 @@ export function parseWithDiagnostics(code: string, options: ParseOptions = {}): 
   const mode = resolveParseMode(options);
   const legacy = parseWithLegacy(normalizedCode);
   const diagnostics = shouldEmitDiagnostics(options)
-    ? [...collectDiagnostics(normalizedCode, legacy), ...unreadableChordDiagnostics(normalizedCode, legacy.track)]
+    ? [...collectDiagnostics(normalizedCode, legacy), ...unreadableChordDiagnostics(normalizedCode, legacy.track), ...rhythmDiagnostics(normalizedCode, legacy.track)]
     : [];
   const hasError = diagnostics.some((diagnostic) => diagnostic.severity === "error");
 
