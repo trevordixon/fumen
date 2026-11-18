@@ -56,6 +56,19 @@ export class Parser {
         this.lastError = null;
     }
 
+    /**
+     * An exception the parser didn't raise itself (a bug: something it doesn't handle yet). It's
+     * recorded like a parse error, at the line being read, so the chart fails with a diagnostic
+     * instead of silently. Only the first error is kept: later ones are its consequences.
+     */
+    recordUnexpected(e) {
+        if (this.lastError) return;
+        var line = (this.context.line || 0) + 1;
+        var errormsg = "Parse error on Line " + line + " : This line can't be read (" + (e && e.message ? e.message : String(e)) + ")";
+        this.lastError = { code: "UNEXPECTED", message: errormsg, line: line, column: (this.context.char || 0) + 1 };
+        if (this.error_msg_callback) this.error_msg_callback(errormsg, this.lastError);
+    }
+
     onParseError(msg) {
         var line = (this.context.line || 0) + 1;
         var column = (this.context.char || 0) + 1;
@@ -445,7 +458,9 @@ export class Parser {
         // Parsing rule:
         //      Any continuous string of "/" and following period "."
 
-        var m = s.match(/(\/+)\./);
+        // Anchored: the slashes and period right after the trigger "." (unanchored, a stray "." took
+        // the next "/." anywhere later in the chart).
+        var m = s.match(/^(\/+)\./);
         var simile = null;
         if (m) {
             var numslash = m[1].length;
@@ -589,6 +604,13 @@ export class Parser {
                         atmark_associated_elements = [];
                     }
                     if(cur_syncopation){
+                        // A push borrows the end of the bar before, and takes its length from its chord.
+                        if (!this.context.prev_measure) {
+                            this.onParseError("A push (<:8 and the like) can't be in the first bar: it borrows from the bar before");
+                        }
+                        if (!r.chord.note_group_list) {
+                            this.onParseError("A push needs a chord with a length after it, like <:8 C:1");
+                        }
                         //cur_syncopation.setCodeDependency(r.chord);
                         let syncchord = r.chord.setSyncopationAndGetShadowChord(cur_syncopation);
                         this.context.prev_measure.pushToBody(syncchord);
@@ -602,6 +624,9 @@ export class Parser {
                 case TOKEN_PERIOD:
                     // Only simile symbol at this moment
                     r = this.parseInMeasSimile(r.token, r.type, r.s);
+                    if (r.simile === null) {
+                        this.onParseError("A stray '.': a final barline is written ||. and a repeated bar ./.");
+                    }
                     measure.appendChild(r.simile);
                     s = r.s;
                     break;
@@ -888,6 +913,7 @@ export class Parser {
             if (!this.options || !this.options.silentErrors) {
                 console.error(e);
             }
+            this.recordUnexpected(e);
             return null;
         }
     }
@@ -943,6 +969,7 @@ export class Parser {
 
             var track = new common.Track();
 
+            this.lastError = null;
             this.context = {
                 line: 0,
                 char: 0,
@@ -1027,6 +1054,7 @@ export class Parser {
             if (!this.options || !this.options.silentErrors) {
                 console.error(e);
             }
+            this.recordUnexpected(e);
             return null;
         }
     }

@@ -174,14 +174,13 @@ async function run() {
   );
   assert.match(unreadable.diagnostics[0].message, /"Fzz"/);
 
-  // A chart the legacy parser rejects without saying why: the line that can't be read alone is named.
-  const silent = esm.parseWithDiagnostics(`[Out]\n| C | F |\n| G | C |.`, { mode: "strict" });
-  assert.equal(silent.ok, false);
-  assert.deepEqual(
-    silent.diagnostics.map((d) => [d.code, d.span.start.line, d.message]),
-    [["FUMEN009", 3, "Line 3 can't be read: a final barline is written ||."]],
-    "Expected the unreadable line to be named"
-  );
+  // Mistakes the parser used to fail on silently (it crashed on what it didn't handle): each is
+  // named, on its line.
+  const named = (code) => esm.parseWithDiagnostics(code, { mode: "strict" }).diagnostics.map((d) => [d.code, d.span.start.line]);
+  assert.deepEqual(named(`[Out]\n| C | F |\n| G | C |.`), [["FUMEN013", 3]], "Expected a stray '.' (|. for ||.) to be named");
+  assert.deepEqual(named(`| <:8 C:1 | D |`), [["FUMEN014", 1]], "Expected a push in the first bar to be named");
+  assert.deepEqual(named(`| C |\n| <:8 G7 | D |`), [["FUMEN015", 2]], "Expected a push before a chord without a length to be named");
+  assert.equal(esm.parseWithDiagnostics(`| C ./. | .//. | D ||.`, { mode: "strict" }).ok, true, "Expected similes to still parse");
 
   // Written lengths that don't fill the bar: a warning on the bar's line. Plain bars, pushes
   // (which borrow from the bar before) and time changes are counted right.

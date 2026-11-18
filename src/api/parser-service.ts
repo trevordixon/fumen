@@ -39,7 +39,11 @@ const legacyCodeMap: Readonly<Record<string, string>> = {
   ERROR_WHILE_PARSE_VARIABLE: "FUMEN005",
   ERROR_WHILE_PARSE_VARIABLE_VALUE: "FUMEN006",
   ERROR_WHILE_PARSE_MEASURE: "FUMEN007",
-  ERROR_WHILE_PARSE_MEASURES: "FUMEN008"
+  ERROR_WHILE_PARSE_MEASURES: "FUMEN008",
+  "A stray '.': a final barline is written ||. and a repeated bar ./.": "FUMEN013",
+  "A push (<:8 and the like) can't be in the first bar: it borrows from the bar before": "FUMEN014",
+  "A push needs a chord with a length after it, like <:8 C:1": "FUMEN015",
+  UNEXPECTED: "FUMEN016"
 };
 
 function normalizeCode(rawCode: string): string {
