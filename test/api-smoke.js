@@ -174,6 +174,15 @@ async function run() {
   );
   assert.match(unreadable.diagnostics[0].message, /"Fzz"/);
 
+  // A chart the legacy parser rejects without saying why: the line that can't be read alone is named.
+  const silent = esm.parseWithDiagnostics(`[Out]\n| C | F |\n| G | C |.`, { mode: "strict" });
+  assert.equal(silent.ok, false);
+  assert.deepEqual(
+    silent.diagnostics.map((d) => [d.code, d.span.start.line, d.message]),
+    [["FUMEN009", 3, "Line 3 can't be read: a final barline is written ||."]],
+    "Expected the unreadable line to be named"
+  );
+
   // Written lengths that don't fill the bar: a warning on the bar's line. Plain bars, pushes
   // (which borrow from the bar before) and time changes are counted right.
   const rhythm = esm.parseWithDiagnostics(`| C | Dm7:2 G7:2 | <:8 CM7:1 |\n| (6/8) C:4. :4. | C:2. D:8 | F7:4. F7:8 r:2 |`, { mode: "strict" });

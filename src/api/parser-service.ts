@@ -259,6 +259,34 @@ function findLargestValidPrefixTrack(code: string): TrackLike | null {
   return bestTrack;
 }
 
+// The legacy parser sometimes gives up without saying why (a final barline written "|.", a push
+// in a chart's first bar). Then each line of music is tried on its own, and every line that can't
+// be read alone is reported: a lead to the problem instead of a silent failure. (Section labels and
+// % settings are skipped: a section with no bars doesn't parse alone, and isn't the problem.)
+function unreadableLineDiagnostics(code: string): readonly ParserDiagnostic[] {
+  const sourceIndex = buildSourceIndex(code);
+  const diagnostics: ParserDiagnostic[] = [];
+  code.split("\n").forEach((line, index) => {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith("%") || /^\[[^\]]*\]$/.test(trimmed)) {
+      return;
+    }
+    if (parseWithLegacy(line).track !== null) {
+      return;
+    }
+    const finalBarline = /(^|[^|])\|\.(?!\/)/.test(line);
+    diagnostics.push({
+      code: "FUMEN009",
+      severity: "error",
+      message: finalBarline
+        ? `Line ${index + 1} can't be read: a final barline is written ||.`
+        : `Line ${index + 1} can't be read`,
+      span: spanForLine(sourceIndex, index + 1)
+    });
+  });
+  return diagnostics;
+}
+
 function collectDiagnostics(code: string, legacy: ReturnType<typeof parseWithLegacy>): readonly ParserDiagnostic[] {
   const staticDiagnostics = scanLineDiagnostics(code);
   const callbackDiagnostics = legacy.callbackErrors.map((entry) =>
@@ -291,6 +319,10 @@ function collectDiagnostics(code: string, legacy: ReturnType<typeof parseWithLeg
       },
       ...staticDiagnostics
     ]);
+  }
+
+  if (legacy.track === null && staticDiagnostics.length === 0) {
+    return dedupeDiagnostics(unreadableLineDiagnostics(code));
   }
 
   return dedupeDiagnostics(staticDiagnostics);
