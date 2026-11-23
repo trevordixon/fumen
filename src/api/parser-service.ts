@@ -396,8 +396,10 @@ function unreadableChordDiagnostics(code: string, track: TrackLike | null): read
 
 // A bar whose written lengths (C:4 r:8 …) don't fill its time signature draws, but rarely as
 // meant: most often a length was left out or mistyped. Bars without lengths (plain chord grids,
-// ./., -2-) aren't checked. A push (<:8 C:1) borrows from the bar before, so the pushed chord's
-// shadow there and the push mark itself don't count.
+// ./., -2-) aren't checked. A push (<:8 C:1) lands at the end of the bar before, and that bar is
+// written either way: full (| Dm7:2 G7:2 | <:8 CM7:1 |, the push borrowing from it) or leaving
+// room for the push (| C:2. r:8 | <:8 F:1 |, which is how it's drawn). Both are right; the push
+// mark itself never counts.
 const WHOLE_NOTE_LENGTH = 17297280;
 
 interface LengthIndicatorLike {
@@ -425,6 +427,8 @@ function noteGroupsLength(value: unknown): number | null {
 interface BarRhythm {
   readonly index: number;
   readonly total: number;
+  /** The length of a push into the next bar, drawn at the end of this one (0 when there is none). */
+  readonly pushed: number;
   readonly numer: number;
   readonly denom: number;
 }
@@ -452,6 +456,7 @@ function collectBarRhythms(track: TrackLike): readonly BarRhythm[] {
       return;
     }
     let total = 0;
+    let pushed = 0;
     let lengthed = 0;
     let unlengthed = 0;
     for (const child of children) {
@@ -471,6 +476,7 @@ function collectBarRhythms(track: TrackLike): readonly BarRhythm[] {
       }
       if (/^_?(Chord|Rest)$/.test(name)) {
         if (element["isSyncopationShadowChord"] === true) {
+          pushed += noteGroupsLength(element["note_group_list"]) ?? 0;
           continue;
         }
         const length = noteGroupsLength(element["note_group_list"]);
@@ -483,7 +489,7 @@ function collectBarRhythms(track: TrackLike): readonly BarRhythm[] {
       }
     }
     if (lengthed > 0 && unlengthed === 0) {
-      bars.push({ index, total, numer, denom });
+      bars.push({ index, total, pushed, numer, denom });
     }
     index += 1;
   };
@@ -525,7 +531,8 @@ function rhythmDiagnostics(code: string, track: TrackLike | null): readonly Pars
     return [];
   }
   const bars = collectBarRhythms(track);
-  const off = bars.filter((bar) => bar.total * bar.denom !== WHOLE_NOTE_LENGTH * bar.numer);
+  const fills = (length: number, bar: BarRhythm): boolean => length * bar.denom === WHOLE_NOTE_LENGTH * bar.numer;
+  const off = bars.filter((bar) => !fills(bar.total, bar) && !(bar.pushed > 0 && fills(bar.total + bar.pushed, bar)));
   if (off.length === 0) {
     return [];
   }

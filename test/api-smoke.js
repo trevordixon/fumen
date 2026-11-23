@@ -195,6 +195,12 @@ async function run() {
     "Expected a warning at each bar whose rhythm doesn't fill it"
   );
 
+  // The bar before a push is written full (the push borrows from it) or leaving room for the
+  // push, which is how it's drawn: neither is a mistake. Short by anything else still is.
+  const pushes = (code) => esm.parseWithDiagnostics(code, { mode: "strict" }).diagnostics.map((d) => d.message);
+  assert.deepEqual(pushes(`| C:2. r:4 | <:8 F:1 | C:2. r:8 | <:8 F:2.~ :8 | <:8 G:1 |`), [], "Expected a bar that leaves room for the push after it to pass");
+  assert.deepEqual(pushes(`| C:2. r:8 | F:1 | C:2 r:8 | <:8 F:1 | C:2. C:8. | <:16 F:1 |`), ["Bar 1 has 3.5 beats of rhythm in 4/4", "Bar 3 has 2.5 beats of rhythm in 4/4"], "Expected room left with no push after it, or the wrong amount of room, to be warned about");
+
   const tokenKinds = new Set(esm.tokenize(`%TITLE="X"\n[Intro]\n| Cb:4 r:2. |`).map((token) => token.kind));
   assert.ok(tokenKinds.has("directive"), "Expected directive token");
   assert.ok(tokenKinds.has("section"), "Expected section token");
