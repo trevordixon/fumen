@@ -450,6 +450,7 @@ export class Rest extends Element{
         this.renderprop = {};
     }
     exportCode(){
+        if(this.impliedFill) return this.writtenCode || ""; // Drawn only: the rest of a rest shortened for a push.
         return `r:${this.length_s}`;
     }
 
@@ -515,6 +516,9 @@ export class Chord extends Element {
         n.syncopationElement = se;
         n.isSyncopationShadowChord = true;
 
+        // The shadow is as long as the push. A pushed chord with no length of its own (<:8 C) is
+        // given one when its bar is filled (Parser.fillPushes).
+        if(!n.note_group_list) n.note_group_list = [{ lengthIndicator: null, note_profiles: null }];
         n.note_group_list.forEach((ng)=>{
             ng.lengthIndicator = se.lengthIndicator;
         });
@@ -794,6 +798,9 @@ export class Chord extends Element {
 
     exportCode(){
         if(this.isSyncopatedShadow()) return ""; // This shall be not exported.
+        if(this.impliedFill) return this.writtenCode || ""; // Drawn only: a note a chord is tied on to (Parser.fillPushes).
+        // A chord whose drawn length was worked out around a push is written back as it was.
+        const note_group_list = this.writtenNoteGroupList !== undefined ? this.writtenNoteGroupList : this.note_group_list;
 
         let code = "";
         if(this.exceptinal_comment){
@@ -813,14 +820,14 @@ export class Chord extends Element {
             if(this.german_bass) code += ("/"+this.german_bass);
             else if(this.base_note_base) code += ("/"+this.base_note_base);
             if(this.base_sharp_flat && !this.german_bass) code += this.base_sharp_flat;
-            if(this.note_group_list){
-                if(this.note_group_list[0].note_profiles){
+            if(note_group_list){
+                if(note_group_list[0].note_profiles){
                     // note
                     code += ":(";
-                    for(let i=0; i<this.note_group_list.length; ++i){
+                    for(let i=0; i<note_group_list.length; ++i){
                         code += "(";
-                        let li = this.note_group_list[i].lengthIndicator;
-                        let nps = this.note_group_list[i].note_profiles;
+                        let li = note_group_list[i].lengthIndicator;
+                        let nps = note_group_list[i].note_profiles;
                         for(let j=0; j<nps.length; ++j){
                             let note = nps[j].note; //
                             code += note.name+Chord.accCodeToStr(note.accidental)+note.octave;
@@ -828,12 +835,12 @@ export class Chord extends Element {
                         }
                         code += ")";
                         code += (":"+li.base + (li.renpu?"_"+li.renpu:"") + ".".repeat(li.numdot) + (li.has_tie?"~":""));
-                        if(i < this.note_group_list.length-1) code += ",";
+                        if(i < note_group_list.length-1) code += ",";
                     }
                     code += ")";
                 }else{
                     // simple length indicator
-                    let li =  this.note_group_list[0].lengthIndicator;
+                    let li =  note_group_list[0].lengthIndicator;
                     code += (":"+li.base + (li.renpu?"_"+li.renpu:"") + ".".repeat(li.numdot) + (li.has_tie?"~":""));
                 }
             }
@@ -1463,7 +1470,7 @@ export class Space extends Element{
         this.renderprop = {};
     }
     getElementName() { return "Space"; }
-    exportCode(){ return ",".repeat(this.length); }
+    exportCode(){ return this.impliedFill ? (this.writtenCode || "") : ",".repeat(this.length); }
     clone(){ return new Space(this.length); }
 }
 

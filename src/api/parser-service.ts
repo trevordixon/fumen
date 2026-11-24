@@ -41,8 +41,7 @@ const legacyCodeMap: Readonly<Record<string, string>> = {
   ERROR_WHILE_PARSE_MEASURE: "FUMEN007",
   ERROR_WHILE_PARSE_MEASURES: "FUMEN008",
   "A stray '.': a final barline is written ||. and a repeated bar ./.": "FUMEN013",
-  "A push (<:8 and the like) can't be in the first bar: it borrows from the bar before": "FUMEN014",
-  "A push needs a chord with a length after it, like <:8 C:1": "FUMEN015",
+  "A push (<:8 and the like) can't open the first bar: it borrows from what is played before it": "FUMEN014",
   UNEXPECTED: "FUMEN016"
 };
 
@@ -479,7 +478,12 @@ function collectBarRhythms(track: TrackLike): readonly BarRhythm[] {
           pushed += noteGroupsLength(element["note_group_list"]) ?? 0;
           continue;
         }
-        const length = noteGroupsLength(element["note_group_list"]);
+        // Notes the parser added to draw a bar around a push aren't written, and a chord it
+        // shortened is checked at the length it was written with.
+        if (element["impliedFill"] === true) {
+          continue;
+        }
+        const length = noteGroupsLength("writtenNoteGroupList" in element ? element["writtenNoteGroupList"] : element["note_group_list"]);
         if (length === null) {
           unlengthed += 1;
         } else {

@@ -179,7 +179,8 @@ async function run() {
   const named = (code) => esm.parseWithDiagnostics(code, { mode: "strict" }).diagnostics.map((d) => [d.code, d.span.start.line]);
   assert.deepEqual(named(`[Out]\n| C | F |\n| G | C |.`), [["FUMEN013", 3]], "Expected a stray '.' (|. for ||.) to be named");
   assert.deepEqual(named(`| <:8 C:1 | D |`), [["FUMEN014", 1]], "Expected a push in the first bar to be named");
-  assert.deepEqual(named(`| C |\n| <:8 G7 | D |`), [["FUMEN015", 2]], "Expected a push before a chord without a length to be named");
+  assert.deepEqual(named(`| C |\n| <:8 G7 | D |`), [], "Expected a push before a chord without a length to be fine");
+  assert.deepEqual(named(`| C <:8 F | G |`), [], "Expected a push in the middle of the first bar to be fine");
   assert.equal(esm.parseWithDiagnostics(`| C ./. | .//. | D ||.`, { mode: "strict" }).ok, true, "Expected similes to still parse");
 
   // Written lengths that don't fill the bar: a warning on the bar's line. Plain bars, pushes
@@ -200,6 +201,63 @@ async function run() {
   const pushes = (code) => esm.parseWithDiagnostics(code, { mode: "strict" }).diagnostics.map((d) => d.message);
   assert.deepEqual(pushes(`| C:2. r:4 | <:8 F:1 | C:2. r:8 | <:8 F:2.~ :8 | <:8 G:1 |`), [], "Expected a bar that leaves room for the push after it to pass");
   assert.deepEqual(pushes(`| C:2. r:8 | F:1 | C:2 r:8 | <:8 F:1 | C:2. C:8. | <:16 F:1 |`), ["Bar 1 has 3.5 beats of rhythm in 4/4", "Bar 3 has 2.5 beats of rhythm in 4/4"], "Expected room left with no push after it, or the wrong amount of room, to be warned about");
+
+  // A push takes its length from what is played just before it, and the bars it touches are
+  // drawn with all their beats, however they were written. `drawn` is each bar as its notes:
+  // chord:length, a tie as ~, the pushed note in [brackets].
+  const WHOLE = 2 * 3 * 5 * 7 * 9 * 11 * 13 * 64;
+  const drawn = (code) => {
+    const bars = [];
+    const visit = (node) => {
+      if (node.constructor.name.replace(/^_/, "") !== "Measure") {
+        (node.childNodes || []).forEach(visit);
+        return;
+      }
+      const notes = [];
+      let total = 0;
+      for (const e of node.childNodes) {
+        const kind = e.constructor.name.replace(/^_/, "");
+        if (kind === "Simile") notes.push("./.");
+        if (kind !== "Chord" && kind !== "Rest") continue;
+        const li = e.note_group_list && e.note_group_list[0].lengthIndicator;
+        const name = kind === "Rest" ? "r" : (e.chord_name_str || "");
+        const text = name + (li ? `:${li.base}${".".repeat(li.numdot)}${li.has_tie ? "~" : ""}` : "");
+        notes.push(e.isSyncopationShadowChord ? `[${text}]` : text);
+        total += li ? li.length : 0;
+      }
+      bars.push(notes.join(" ") + (total ? ` = ${total * 4 / WHOLE}` : ""));
+    };
+    visit(esm.parse(code).track);
+    return bars;
+  };
+  // The bar before a push, written every way: one chord, a full bar, two chords, commas.
+  assert.deepEqual(drawn(`| G | F | <:8 G:1 | F:1 | <:8 G:1 |`), ["G", "F:2.~ :8 [G:8~] = 4", "G:1 = 4", "F:2.~ :8 [G:8~] = 4", "G:1 = 4"]);
+  assert.deepEqual(drawn(`| F Am | <:8 G:1 | F , , Am | <:8 G:1 | F:2 Am:2 | <:8 G:1 |`).filter((_, i) => i % 2 === 0), ["F:2 Am:4. [G:8~] = 4", "F:2. Am:8 [G:8~] = 4", "F:2 Am:4. [G:8~] = 4"]);
+  // Room already left for the push: nothing changes.
+  assert.deepEqual(drawn(`| F:2. r:8 | <:8 G:1 | F:2.~ :8 | <:8 G:1 |`).filter((_, i) => i % 2 === 0), ["F:2. r:8 [G:8~] = 4", "F:2.~ :8 [G:8~] = 4"]);
+  // Other lengths of push, a rest before it, and a tie that carries on.
+  assert.deepEqual(drawn(`| F | <:16 G:1 | F | <:4 G:1 | r:1 | <:8 G:1 | C:1~ | :1 | <:8 F:1 |`).filter((_, i) => (i % 2 === 0 && i < 8) || i === 7), ["F:2.~ :8. [G:16~] = 4", "F:2. [G:4~] = 4", "r:2. r:8 [G:8~] = 4", "C:1~ = 4", ":2.~ :8 [F:8~] = 4"]);
+  // One push after another, and a pushed chord with no length of its own.
+  assert.deepEqual(drawn(`| C | <:8 F:1 | <:8 G:1 | <:8 Am Dm | G |`), ["C:2.~ :8 [F:8~] = 4", "F:2.~ :8 [G:8~] = 4", "G:2.~ :8 [Am:8~] = 4", "Am:2 Dm:2 = 4", "G"]);
+  // Other time signatures.
+  assert.deepEqual(drawn(`| (3/4) C | <:8 F:2. | (2/4) C | (4/4) <:8 F:1 |`).filter((_, i) => i % 2 === 0), ["C:2~ :8 [F:8~] = 3", "C:4. [F:8~] = 2"]);
+  // In the middle of a bar: with lengths, without, and with room left.
+  assert.deepEqual(drawn(`| C:2 <:8 F:2 | C <:8 F | C:4. <:8 F:2 | r:2 <:8 F:2 | C , , <:8 F |`), ["C:4. [F:8~] F:2 = 4", "C:4. [F:8~] F:2 = 4", "C:4. [F:8~] F:2 = 4", "r:4. [F:8~] F:2 = 4", "C:2~ :8 [F:8~] F:4 = 4"]);
+  assert.deepEqual(drawn(`| C | C:2 <:8 F:2 |`)[0], "C", "Expected a push in the middle of a bar to leave the bar before alone");
+  // A bar that is ./. is drawn as the bar it repeats, pushed; one with no push stays a sign.
+  assert.deepEqual(drawn(`| F Am | ./. | ./. | <:8 G:1 |`), ["F Am", "./.", "F:2 Am:4. [G:8~] = 4", "G:1 = 4"]);
+  assert.deepEqual(drawn(`| C:4. F:8~ :2 | ./. | <:8 G:1 |`)[1], "C:4. F:8~ :4. [G:8~] = 4");
+  // What can't be worked out is left as written: three chords in 4/4, a tuplet to shorten.
+  assert.deepEqual(drawn(`| C F G | <:8 Am:1 | C:2 :4_3 :4_3 :4_3 | <:8 F:1 |`).filter((_, i) => i % 2 === 0), ["C F G [Am:8~] = 0.5", "C:2 :4 :4 :4 [F:8~] = 4.5"]);
+  // None of it is written back: the source round-trips, and the written lengths are what the
+  // bar-length warning counts.
+  for (const source of [`| G | F | <:8 G:1 | F:1 | <:8 G:1 |`, `| C | ./. | <:8 F:1 | r:1 | <:8 G | C , , <:8 F |`, `| C:2 <:8 F:2 | C <:8 F | C:1~ | :1 | <:8 F:1 |`]) {
+    const out = esm.parse(`[A]\n${source}`).track.exportCode();
+    assert.equal(out.replace(/\s+/g, " ").trim(), `[A] ${source}`, "Expected pushes to be written back as they were");
+    assert.equal(esm.parse(out).track.exportCode(), out, "Expected the export to be stable");
+  }
+  assert.deepEqual(pushes(`| F:1 | <:8 G:1 | C:2 <:8 F:2 | C:4. <:8 F:2 | C | ./. | <:8 F:1 |`), [], "Expected full bars and bars with room left to pass, in the middle of a bar too");
+  assert.deepEqual(pushes(`| C:2 <:8 F:4 | G |`), ["Bar 1 has 3 beats of rhythm in 4/4"], "Expected a short bar with a push inside it to be warned about");
 
   const tokenKinds = new Set(esm.tokenize(`%TITLE="X"\n[Intro]\n| Cb:4 r:2. |`).map((token) => token.kind));
   assert.ok(tokenKinds.has("directive"), "Expected directive token");

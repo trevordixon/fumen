@@ -604,16 +604,16 @@ export class Parser {
                         atmark_associated_elements = [];
                     }
                     if(cur_syncopation){
-                        // A push borrows the end of the bar before, and takes its length from its chord.
-                        if (!this.context.prev_measure) {
-                            this.onParseError("A push (<:8 and the like) can't be in the first bar: it borrows from the bar before");
-                        }
-                        if (!r.chord.note_group_list) {
-                            this.onParseError("A push needs a chord with a length after it, like <:8 C:1");
+                        // A push borrows from what is played just before it: the chord or rest
+                        // before it in this bar, or else the end of the bar before.
+                        const inside = measure.childNodes.some((e) => e instanceof common.Chord || e instanceof common.Rest);
+                        if (!inside && !this.context.prev_measure) {
+                            this.onParseError("A push (<:8 and the like) can't open the first bar: it borrows from what is played before it");
                         }
                         //cur_syncopation.setCodeDependency(r.chord);
                         let syncchord = r.chord.setSyncopationAndGetShadowChord(cur_syncopation);
-                        this.context.prev_measure.pushToBody(syncchord);
+                        if (inside) measure.appendChild(syncchord);
+                        else this.context.prev_measure.pushToBody(syncchord);
                         cur_syncopation = null;
                     }
 
@@ -702,6 +702,150 @@ export class Parser {
         }
 
         return { measure: measure, s: s };
+    }
+
+    /**
+     * Gives every bar a push touches the rhythm it is played with, so that it draws with all its
+     * beats. A push (<:8 G) takes its eighth from what is played just before it, and the writer
+     * shouldn't have to do that sum: | F | <:8 G:1 | is F for three and a half beats and then G.
+     *
+     * - A chord written without a length gets one: the bar, less what is written with lengths,
+     *   shared among the chords without (a comma after a chord gives it another share).
+     * - If the bar is then full without its pushes, each push shortens the chord or rest before
+     *   it. If it is full only with them, room was left for them (| F:2. r:8 | <:8 G:1 |) and
+     *   nothing is shortened.
+     *
+     * A length that takes more than one note (three and a half beats: a dotted half tied to an
+     * eighth) adds notes after the chord that are drawn but never written back (impliedFill),
+     * and a chord whose length changed keeps what was written (writtenNoteGroupList). A bar that
+     * is ./. can't be drawn as that sign with a push at its end, so it is drawn as the bar it
+     * repeats, pushed (and still written back as ./.). A bar that doesn't work out (lengths that
+     * don't add up, a tuplet to shorten) is left as written.
+     */
+    fillPushes(track) {
+        const WHOLE = common.WHOLE_NOTE_LENGTH;
+        // The notes one length is drawn with, longest first: [{base, numdot, length}], or null.
+        const VALUES = [];
+        for (const base of [1, 2, 4, 8, 16, 32]) {
+            if (base < 32) VALUES.push({ base, numdot: 1, length: WHOLE / base * 3 / 2 });
+            VALUES.push({ base, numdot: 0, length: WHOLE / base });
+        }
+        VALUES.sort((a, b) => b.length - a.length);
+        const notesFor = (length) => {
+            const out = [];
+            while (length > 0) {
+                const value = VALUES.find((v) => v.length <= length);
+                if (!value || out.length >= 4) return null;
+                out.push(value);
+                length -= value.length;
+            }
+            return out;
+        };
+        const lengthOf = (e) => e.note_group_list[0].lengthIndicator.length;
+        const isNote = (e) => e instanceof common.Chord || e instanceof common.Rest;
+
+        let numer = 4, denom = 4;
+        // The last bar with chords of its own, as written: what a ./. after it repeats.
+        let repeated = null;
+        const fill = (measure) => {
+            for (const e of measure.childNodes) {
+                if (e instanceof common.Time) { numer = Number(e.numer) || numer; denom = Number(e.denom) || denom; }
+            }
+            const children = measure.childNodes;
+            const shadows = children.filter((e) => e instanceof common.Chord && e.isSyncopatedShadow());
+            const similes = children.filter((e) => e instanceof common.Simile);
+            if (similes.length == 1 && similes[0].numslash == 1 && !children.some((e) => isNote(e) && !shadows.includes(e))) {
+                if (shadows.length && repeated) {
+                    const copies = repeated.map((make) => make());
+                    copies.forEach((e) => { e.impliedFill = true; e.parentNode = measure; });
+                    copies[0].writtenCode = similes[0].exportCode();
+                    children.splice(children.indexOf(similes[0]), 1, ...copies);
+                }
+            } else if (children.some(isNote) && !children.some((e) => e instanceof common.Simile || e instanceof common.LongRest)) {
+                repeated = children.filter((e) => !shadows.includes(e) && (isNote(e) || e instanceof common.Space)).map((e) =>
+                    e instanceof common.Space ? () => new common.Space(e.length)
+                        : e instanceof common.Rest ? () => new common.Rest(e.length_s)
+                            : () => { const n = new common.Chord(e.chord_str); e.copyNoteNamesTo(n); return n; });
+            } else {
+                repeated = null;
+            }
+            const own = children.filter((e) => isNote(e) && !(e instanceof common.Chord && e.isSyncopatedShadow()));
+            const bare = own.filter((e) => !e.note_group_list);
+            // Only bars a push touches: one is pushed into here, or a pushed chord here has no length.
+            if (!shadows.length && !bare.some((e) => e.isSyncopatedSource())) return;
+            if (children.some((e) => e instanceof common.Simile || e instanceof common.LongRest)) return;
+            if (own.some((e) => e.note_group_list && (e.note_group_list.length != 1 || !e.note_group_list[0].lengthIndicator))) return;
+
+            const full = WHOLE * numer / denom;
+            const lengths = new Map(own.filter((e) => e.note_group_list).map((e) => [e, lengthOf(e)]));
+            let total = 0;
+            lengths.forEach((length) => { total += length; });
+            if (bare.length) {
+                // A chord's shares: itself and the commas after it.
+                const shares = new Map(bare.map((e) => [e, 1]));
+                let last = null;
+                for (const e of children) {
+                    if (isNote(e)) last = shares.has(e) ? e : null;
+                    else if (e instanceof common.Space && last) shares.set(last, shares.get(last) + e.length);
+                }
+                let count = 0;
+                shares.forEach((n) => { count += n; });
+                const share = (full - total) / count;
+                if (share <= 0 || !Number.isInteger(share)) return;
+                shares.forEach((n, e) => { lengths.set(e, n * share); });
+                total = full;
+            }
+            if (total == full) {
+                // Each push takes its length from the note before it.
+                let before = null;
+                const taken = new Map();
+                for (const e of children) {
+                    if (shadows.includes(e)) {
+                        if (!before || lengths.get(before) - (taken.get(before) || 0) <= lengthOf(e)) return;
+                        taken.set(before, (taken.get(before) || 0) + lengthOf(e));
+                    } else if (isNote(e)) before = e;
+                }
+                for (const [e, length] of taken) {
+                    if (e.note_group_list && e.note_group_list[0].lengthIndicator.renpu) return;
+                    lengths.set(e, lengths.get(e) - length);
+                }
+            }
+            // The notes to draw, all worked out before anything is changed.
+            const changes = [];
+            for (const e of own) {
+                const length = lengths.get(e);
+                if (e.note_group_list && lengthOf(e) == length) continue;
+                const notes = notesFor(length);
+                if (!notes) return;
+                changes.push([e, notes]);
+            }
+            for (const [e, notes] of changes) {
+                const written = e.note_group_list;
+                const rest = e instanceof common.Rest;
+                const tied = written ? written[0].lengthIndicator.has_tie : false;
+                const indicator = (value, last) => ({ length: value.length, base: value.base, renpu: null, numdot: value.numdot, has_tie: rest ? false : (last ? tied : true) });
+                e.writtenNoteGroupList = written;
+                e.note_group_list = [{ lengthIndicator: indicator(notes[0], notes.length == 1), note_profiles: written ? written[0].note_profiles : null }];
+                let at = children.indexOf(e);
+                notes.slice(1).forEach((value, i) => {
+                    const length_s = value.base + ".".repeat(value.numdot);
+                    const more = rest ? new common.Rest(length_s) : new common.Chord(":" + length_s);
+                    more.note_group_list = [{ lengthIndicator: indicator(value, i == notes.length - 2), note_profiles: written ? written[0].note_profiles : null }];
+                    more.impliedFill = true;
+                    more.parentNode = measure;
+                    children.splice(++at, 0, more);
+                });
+            }
+            children.forEach((e, i) => {
+                e.previousSiblingNode = children[i - 1];
+                e.nextSiblingNode = children[i + 1];
+            });
+        };
+        const visit = (node) => {
+            if (node instanceof common.Measure) fill(node);
+            else (node.childNodes || []).forEach(visit);
+        };
+        visit(track);
     }
 
     parseMeasures(trig_token_obj, s) {
@@ -1049,6 +1193,7 @@ export class Parser {
             }
 
             common.Chord.applyGermanNoteNames(track);
+            this.fillPushes(track);
             return track;
         }catch(e){
             if (!this.options || !this.options.silentErrors) {
