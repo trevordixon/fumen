@@ -587,6 +587,17 @@ export class Parser {
                     // Analyze Rest symbol firstly, if not it is chord.
                     var rr = this.parseRest(r.token, r.type, r.s);
                     if (rr.rest !== null) {
+                        // Text written 'like this'@ before a rest goes above the rest, as it does above a chord.
+                        if(atmark_associated_elements.length > 0){
+                            for(let ei=atmark_associated_elements.length - 1; ei >= 0; --ei){
+                                let elem = atmark_associated_elements[ei];
+                                if(elem instanceof common.Comment && !rr.rest.exceptinal_comment){
+                                    elem.setCodeDependency(rr.rest);
+                                    rr.rest.exceptinal_comment = elem;
+                                }
+                            }
+                            atmark_associated_elements = [];
+                        }
                         measure.appendChild(rr.rest);
                         s = rr.s;
                         cur_syncopation = null; // Cancel it

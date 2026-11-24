@@ -367,6 +367,20 @@ async function run() {
   assert.equal(Chord.transposeSymbol("^text", 2, "AUTO", "C"), "^text");
   assert.deepEqual([Chord.transposeKey("Am", 3, "SHARP"), Chord.transposeKey("G", 1), Chord.transposeKey("H", 1), Chord.transposeKey("", 1)], ["Cm", "Ab", null, null]);
 
+  // Text written before a rest belongs to the rest: kept, written back, and drawn above it.
+  {
+    const track = new umd.Parser().parse("| Am | 'break'@ r:1 |\n| 'stop'@ r:2 C:2 |");
+    const rests = [];
+    const walk = (n) => { if (n.getElementName && n.getElementName() === "Rest") rests.push(n); (n.childNodes || []).forEach(walk); };
+    walk(track);
+    assert.deepEqual(rests.map((r) => r.exceptinal_comment && r.exceptinal_comment.comment), ["break", "stop"]);
+    assert.deepEqual(rests.map((r) => r.exportCode()), ["'break'@ r:1", "'stop'@ r:2"]);
+    assert.equal(rests[0].clone().exportCode(), "'break'@ r:1");
+    const plain = new umd.Parser().parse("| r:1 | 'x'@ C |");
+    const plainRests = []; const walk2 = (n) => { if (n.getElementName && n.getElementName() === "Rest") plainRests.push(n); (n.childNodes || []).forEach(walk2); };
+    walk2(plain);
+    assert.equal(plainRests[0].exportCode(), "r:1");
+  }
 
   console.warn = originalWarn;
   console.log("API smoke tests passed");

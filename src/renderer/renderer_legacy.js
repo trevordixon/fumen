@@ -963,6 +963,12 @@ export class Renderer {
             this.hitManager.add(paper, wo_flags.bounding_box, e);
             bounding_box.add(wo_flags.bounding_box); // global RS are bounding box
 
+            // Text above a rest on the rhythm staff ('stop'@ r:2): above the rest itself, in the row's text area.
+            if (e instanceof common.Rest && e.exceptinal_comment && e.renderprop.comment_y_bottom !== undefined && this.renderChordComment) {
+                let r = this.renderChordComment(paper, wo_flags.bounding_box.get().x, e.renderprop.comment_y_bottom, e.exceptinal_comment.comment, param);
+                this.hitManager.add(paper, r.bb, e.exceptinal_comment);
+            }
+
 
             let xs = balken_element.notes_coord.x;
 

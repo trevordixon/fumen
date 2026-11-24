@@ -448,13 +448,22 @@ export class Rest extends Element{
             { lengthIndicator: Chord.parseLengthIndicator(length_s), note_profiles: null }
         ];
         this.renderprop = {};
+        this.exceptinal_comment = null; // Text written above the rest: 'break'@ r:1
     }
     exportCode(){
         if(this.impliedFill) return this.writtenCode || ""; // Drawn only: the rest of a rest shortened for a push.
-        return `r:${this.length_s}`;
+        const text = this.exceptinal_comment ? this.exceptinal_comment.exportCode() + "@ " : "";
+        return `${text}r:${this.length_s}`;
     }
 
-    clone(){ return new Rest(this.length_s); }
+    clone(){
+        const n = new Rest(this.length_s);
+        if(this.exceptinal_comment){
+            n.exceptinal_comment = this.exceptinal_comment.clone();
+            n.exceptinal_comment.setCodeDependency(n);
+        }
+        return n;
+    }
 }
 
 /**

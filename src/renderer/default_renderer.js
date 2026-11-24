@@ -1542,6 +1542,11 @@ export class DefaultRenderer extends Renderer {
                             lyric_rows
                         );
                     }
+                } else if (e instanceof common.Rest) {
+                    if(e.exceptinal_comment){
+                        yprof.mu.detected = true;
+                        fixed_mu_elem_detected = true;
+                    }
                 } else if (e instanceof common.Lyric) {
                     throw "Illegal parsing";
                 }
@@ -1903,6 +1908,9 @@ export class DefaultRenderer extends Renderer {
                         room_for_rs, 
                         true); // Only estimation actual scaing not apply
                     
+                    element_group.elems.forEach((ge) => {
+                        if (ge instanceof common.Rest && ge.exceptinal_comment) ge.renderprop.comment_y_bottom = yprof.mu.y + yprof.mu.height;
+                    });
                     let g = this.renderRsArea(
                         x, // does not scale, all the scaing things are processed inside this function
                         draw_scale,
@@ -2021,6 +2029,10 @@ export class DefaultRenderer extends Renderer {
                             yprof.rs.detected ? param.rs_area_height : param.base_body_height,
                             param
                         );
+                        if (draw && e.exceptinal_comment) {
+                            let r = this.renderChordComment(paper, x / draw_scale, yprof.mu.y + yprof.mu.height, e.exceptinal_comment.comment, param);
+                            this.hitManager.add(paper, r.bb.scale(draw_scale,1), e.exceptinal_comment);
+                        }
                         if(draw){
                             x += elem_width;
                             this.hitManager.add(paper, cr.bb.scale(draw_scale,1), e);
@@ -2569,6 +2581,11 @@ export class DefaultRenderer extends Renderer {
                         param
                     );
                     this.hitManager.add(paper, cr.bb, e);
+                    if (e.exceptinal_comment) {
+                        // Above a whole rest that has the bar to itself: where it would sit above a chord.
+                        let r = this.renderChordComment(paper, sx, yprof.mu.y + yprof.mu.height, e.exceptinal_comment.comment, param);
+                        this.hitManager.add(paper, r.bb, e.exceptinal_comment);
+                    }
                 } else if (e instanceof common.Simile) {
                     // Simile mark in measure wide element if there is no other body elements in this measure
                     let sx =
