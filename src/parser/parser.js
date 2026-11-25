@@ -859,6 +859,96 @@ export class Parser {
         visit(track);
     }
 
+    /**
+     * Beat slashes: under %SHOW_STAFF="SLASHES", a bar whose chords have no lengths is drawn as a
+     * staff with one plain slash (no stem) on each beat, each chord over the beat it comes in on.
+     * It says "this many beats, play as you like", where written lengths say "play this rhythm".
+     *
+     * The slashes are drawn only, never written back (impliedFill), and a chord keeps what was
+     * written, which is no length (writtenNoteGroupList). A chord's beat comes from its place
+     * among the bar's chords and commas: | C F | is beats 1 and 3 of four, | C , , F | is 1 and 4.
+     * In 6/8, 9/8 and 12/8 the beat is the dotted quarter. A bar with written rhythm, a rest, a
+     * repeat sign, a push, or more chords than beats is left as it is.
+     */
+    fillSlashes(track) {
+        const WHOLE = common.WHOLE_NOTE_LENGTH;
+        let numer = 4, denom = 4;
+        const fill = (measure) => {
+            for (const e of measure.childNodes) {
+                if (e instanceof common.Time) { numer = Number(e.numer) || numer; denom = Number(e.denom) || denom; }
+            }
+            if (measure.getVariable("SHOW_STAFF") !== "SLASHES") return;
+            const children = measure.childNodes;
+            if (children.some((e) => e instanceof common.Rest || e instanceof common.Simile || e instanceof common.LongRest || e instanceof common.Syncopation)) return;
+            const chords = children.filter((e) => e instanceof common.Chord);
+            if (chords.some((e) => e.note_group_list || e.impliedFill || e.isSyncopatedShadow() || e.isSyncopatedSource())) return;
+            const compound = denom == 8 && numer > 3 && numer % 3 == 0;
+            const beats = compound ? numer / 3 : numer;
+            const base = compound ? 4 : denom;
+            const numdot = compound ? 1 : 0;
+            if (![1, 2, 4, 8, 16].includes(base) || beats < 1 || beats > 16) return;
+            const indicator = () => ({ length: WHOLE / base * (numdot ? 1.5 : 1), base: base, renpu: null, numdot: numdot, has_tie: false });
+
+            // Each chord and each comma is a place in the bar; a chord's beat is where its place falls.
+            const places = [];
+            for (const e of children) {
+                if (e instanceof common.Chord) places.push(e);
+                else if (e instanceof common.Space) for (let i = 0; i < e.length; i++) places.push(null);
+            }
+            const on = new Map(); // beat -> chord
+            let last = -1;
+            for (let i = 0; i < places.length; i++) {
+                if (!places[i]) continue;
+                let beat = Math.max(last + 1, Math.floor(i * beats / places.length));
+                if (beat >= beats) return; // more chords than beats: left as written
+                on.set(beat, places[i]);
+                last = beat;
+            }
+            const slash = () => {
+                const e = new common.Chord(":" + base + ".".repeat(numdot));
+                e.note_group_list = [{ lengthIndicator: indicator(), note_profiles: null }];
+                e.impliedFill = true;
+                e.beatSlash = true;
+                e.parentNode = measure;
+                return e;
+            };
+            // Slashes before the first chord go where the bar's contents start; the rest follow their chord.
+            const first = children.findIndex((e) => e instanceof common.Chord || e instanceof common.Space);
+            let at = first >= 0 ? first : Math.max(1, children.length - 1);
+            let after = null;
+            for (let beat = 0; beat < beats; beat++) {
+                const chord = on.get(beat);
+                if (chord) {
+                    chord.writtenNoteGroupList = null;
+                    chord.note_group_list = [{ lengthIndicator: indicator(), note_profiles: null }];
+                    chord.beatSlash = true;
+                    after = chord;
+                    continue;
+                }
+                const e = slash();
+                if (after) at = children.indexOf(after) + 1;
+                children.splice(at, 0, e);
+                after = e;
+            }
+            // The commas only said where the chords go: they take no room of their own here.
+            children.forEach((e) => {
+                if (!(e instanceof common.Space)) return;
+                e.writtenCode = ",".repeat(e.length);
+                e.impliedFill = true;
+                e.length = 0;
+            });
+            children.forEach((e, i) => {
+                e.previousSiblingNode = children[i - 1];
+                e.nextSiblingNode = children[i + 1];
+            });
+        };
+        const visit = (node) => {
+            if (node instanceof common.Measure) fill(node);
+            else (node.childNodes || []).forEach(visit);
+        };
+        visit(track);
+    }
+
     parseMeasures(trig_token_obj, s) {
         // prerequisite :
         //   trig_token_obj == "|" or "||" or "||:" with params. consumed.
@@ -1205,6 +1295,7 @@ export class Parser {
 
             common.Chord.applyGermanNoteNames(track);
             this.fillPushes(track);
+            this.fillSlashes(track);
             return track;
         }catch(e){
             if (!this.options || !this.options.silentErrors) {

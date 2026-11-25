@@ -1498,7 +1498,8 @@ export class DefaultRenderer extends Renderer {
         var lyric_rows = 0;
 
         //var draw_5line = false;
-        if (show_staff == "YES") {
+        // "SLASHES" shows the staff too: its bars carry a slash on each beat (Parser.fillSlashes).
+        if (show_staff == "YES" || show_staff == "SLASHES") {
             yprof.rs.detected = true; 
         }
 

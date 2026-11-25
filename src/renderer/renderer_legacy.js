@@ -149,6 +149,8 @@ export class Renderer {
                     header_elements.push(e);
                 } else if (e instanceof common.Lyric) {
                     header_elements.push(e);
+                } else if (e instanceof common.Space && e.impliedFill && e.length === 0) {
+                    // A comma that only said where a chord goes among beat slashes (Parser.fillSlashes): nothing to draw.
                 } else if (e instanceof common.Space) {
                     body_elements.push(e);
                 } else if (e instanceof common.Syncopation){
@@ -540,6 +542,8 @@ export class Renderer {
             pos_on_5lines: pos_on_5lines, // for notes only
             lengthIndicator: lengthIndicator,
             sharp_flats: sharp_flats, // for notes only
+            // A beat slash (%SHOW_STAFF="SLASHES", Parser.fillSlashes): the slash alone, no stem.
+            no_stem: !!e.beatSlash,
             renderprop: {} // for internal use
         };
 
@@ -1263,7 +1267,7 @@ export class Renderer {
             if (elements[gbi].balken_element.type == "slash") {
                 let bar_x = upper_flag ? xs[0][2] : xs[0][1];
                 // eslint-disable-next-line no-empty
-                if (d <= 1) {
+                if (d <= 1 || elements[gbi].balken_element.no_stem) {
                 } else {
                     let r = graphic.canvasLine(paper,
                         bar_x,
@@ -1419,7 +1423,7 @@ export class Renderer {
             if (elements[gbi].balken_element.type == "slash") {
                 let bar_x = upper_flag ? xs[0][2] : xs[0][1];
                 // eslint-disable-next-line no-empty
-                if (d <= 1) {
+                if (d <= 1 || elements[gbi].balken_element.no_stem) {
                 } else {
                     let r = graphic.canvasLine(paper,
                         bar_x,
