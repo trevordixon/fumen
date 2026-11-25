@@ -693,6 +693,27 @@ function judgeTextYPosOffset(canvas, font, code)/*bold, fontfamily, fontsize) */
         else ++bottom_room;
     }
 
+    // Some browsers nudge the pixels a canvas gives back so pages can't fingerprint it (Brave, and
+    // privacy extensions): then every row looks inked and the glyph measures as tall as the box.
+    // The font's own metrics say where the ink is without reading pixels, so when the scan is far
+    // from them, they are what's used. When the two agree, as they do without that noise, the scan
+    // stands and nothing changes.
+    var scale = (canvas.ratio || 1) * (canvas.zoom || 1);
+    var metrics = context.measureText(code);
+    var ascent = metrics.actualBoundingBoxAscent;
+    var descent = metrics.actualBoundingBoxDescent;
+    if (Number.isFinite(ascent) && Number.isFinite(descent)) {
+        var inked = ascent + descent > 0;
+        // Rows, as the scan counts them: the ink's top edge, and the row after its bottom edge.
+        var top = inked ? Math.min(imageData.height, Math.max(0, Math.floor(-ascent * scale))) : imageData.height;
+        var end = inked ? Math.min(imageData.height, Math.max(0, Math.ceil(descent * scale))) : 0;
+        var tolerance = 3; // rows: anti-aliasing and rounding move an edge by one or two
+        if (Math.abs(top_room - top) > tolerance || Math.abs(imageData.height - bottom_room - end) > tolerance) {
+            top_room = top;
+            bottom_room = imageData.height - end;
+        }
+    }
+
     // here the raw pixel data resolution is G_pixelRatio * G_zoom times. (Same value as setTransform in SetupHIDPICanvas) 
     return {
         top_room: top_room / canvas.ratio / canvas.zoom,
