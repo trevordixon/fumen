@@ -585,7 +585,8 @@ export class Renderer {
                     d,
                     numdot,
                     _5lines_intv,
-                    draw
+                    draw,
+                    balken_element.no_stem
                 );
             } else {
                 ret = this.renderSlash(
@@ -596,7 +597,8 @@ export class Renderer {
                     d,
                     numdot,
                     _5lines_intv,
-                    draw
+                    draw,
+                    balken_element.no_stem
                 );
 
             }
@@ -1541,10 +1543,17 @@ export class Renderer {
         return x; //{ x: x, bb: bounding_box };
     }
 
-    renderSlash(paper, group, x, y, d, numdot, _5lines_intv, draw=true) {
+    renderSlash(paper, group, x, y, d, numdot, _5lines_intv, draw=true, plain=false) {
         var rsgw = 8;
         var rsgh = _5lines_intv * 2;
         var rsh = 4;
+        // A beat slash (%SHOW_STAFF="SLASHES"): a long thin stroke, as it is written by hand,
+        // not a note's head. It counts a beat and says nothing of length, so it takes no dot.
+        if (plain) {
+            rsgw = _5lines_intv * 2.4;
+            rsh = 1.7;
+            numdot = 0;
+        }
 
         if(draw){
 

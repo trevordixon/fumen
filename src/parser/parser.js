@@ -868,7 +868,8 @@ export class Parser {
      * written, which is no length (writtenNoteGroupList). A chord's beat comes from its place
      * among the bar's chords and commas: | C F | is beats 1 and 3 of four, | C , , F | is 1 and 4.
      * In 6/8, 9/8 and 12/8 the beat is the dotted quarter. A bar with written rhythm, a rest, a
-     * repeat sign, a push, or more chords than beats is left as it is.
+     * repeat sign (in the bar, or ./|/. across it and its neighbour), a push, or more chords than
+     * beats is left as it is.
      */
     fillSlashes(track) {
         const WHOLE = common.WHOLE_NOTE_LENGTH;
@@ -880,6 +881,8 @@ export class Parser {
             if (measure.getVariable("SHOW_STAFF") !== "SLASHES") return;
             const children = measure.childNodes;
             if (children.some((e) => e instanceof common.Rest || e instanceof common.Simile || e instanceof common.LongRest || e instanceof common.Syncopation)) return;
+            // The two bars the two-bar repeat sign (./|/.) is drawn across are that sign's.
+            if (children.some((e) => e instanceof common.MeasureBoundaryDblSimile)) return;
             const chords = children.filter((e) => e instanceof common.Chord);
             if (chords.some((e) => e.note_group_list || e.impliedFill || e.isSyncopatedShadow() || e.isSyncopatedSource())) return;
             const compound = denom == 8 && numer > 3 && numer % 3 == 0;
