@@ -46,6 +46,9 @@ export class Renderer {
             fs: "f",
             fd: "f",
             fb: "b",
+            // A final barline written inside a row ("| C ||. D |"): both of the bars it stands
+            // between carry it.
+            ff: "f",
             rr: "r",
             ns: "s",
             nd: "d",

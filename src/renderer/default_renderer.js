@@ -542,6 +542,11 @@ export class DefaultRenderer extends Renderer {
             }
 
             if(row_num_meas > base_num_meas){
+                // A shorter row set to expand ("<>") fills the width by itself: it cannot share
+                // columns with a longer row after it (grouped with one, the draw stopped with
+                // "Forward alignment process error"). The longer row starts the next group.
+                let short_expand = group.some((g) => g[0].length < row_num_meas && this.resolveRowAlign(g[0], param) === "expand");
+                if(short_expand) break;
                 base_num_meas = row_num_meas;
                 group.push(reharsal_x_width_info[row]);
             }else if(row_num_meas === base_num_meas){
