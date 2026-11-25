@@ -1670,7 +1670,9 @@ export class DefaultRenderer extends Renderer {
                     header_boundary_type = r.draw_type;
                 } else if (e instanceof common.Time) {
                     let lead = this.timeSigGapAfterBoundary(header_boundary_type);
-                    let w = 12 + lead;
+                    // Room for the wider of the two numbers: 12/8, 13/8 and x/16 have two digits.
+                    let digits = Math.max(String(e.numer).length, String(e.denom).length);
+                    let w = 12 + (digits - 1) * 8 + lead;
                     meas_fixed_width += w;
                     all_fixed_width_details.push({type:"fixed", f:w});
                     e.renderprop = { w: w, lead: lead };
@@ -2364,22 +2366,25 @@ export class DefaultRenderer extends Renderer {
                     let timeSigCenterY = y_body_or_rs_base + row_height/2 + timeSigCenterYOffset;
                     let timeSigHeight = cont_height/2 * timeSigScale;
                     
-                    let rd = graphic.canvasImage(paper, 
-                        this.getMusicGlyph("uniE08"+e.numer),// numbers
-                        x + left_margin, 
-                        timeSigCenterY,
-                        null, 
-                        timeSigHeight,
-                        "lb",
-                        true);
-                    let rn = graphic.canvasImage(paper, 
-                        this.getMusicGlyph("uniE08"+e.denom),// numbers
-                        x + left_margin, 
-                        timeSigCenterY,
-                        null, 
-                        timeSigHeight,
-                        "lt",
-                        true);
+                    // A number is drawn a digit at a time (the font has the ten digits, not 12 or 13):
+                    // the narrower of the two is centred over the wider.
+                    const glyphWidth = (bb) => bb.x[1] - bb.x[0];
+                    const numberWidth = (n) => String(n).split("").reduce((sum, d) =>
+                        sum + glyphWidth(graphic.canvasImage(paper, this.getMusicGlyph("uniE08"+d), 0, 0, null, timeSigHeight, "lt", false).bb), 0);
+                    const numerW = numberWidth(e.numer), denomW = numberWidth(e.denom);
+                    const widest = Math.max(numerW, denomW);
+                    const drawNumber = (n, own_w, align) => {
+                        let dx = x + left_margin + (String(e.numer).length === String(e.denom).length ? 0 : (widest - own_w) / 2);
+                        let bb = null;
+                        String(n).split("").forEach((d) => {
+                            let r = graphic.canvasImage(paper, this.getMusicGlyph("uniE08"+d), dx, timeSigCenterY, null, timeSigHeight, align, true);
+                            dx += glyphWidth(r.bb);
+                            bb = bb ? bb.add_BB(r.bb) : r.bb;
+                        });
+                        return { bb: bb };
+                    };
+                    let rd = drawNumber(e.numer, numerW, "lb");
+                    let rn = drawNumber(e.denom, denomW, "lt");
                     x += e.renderprop.w;
                     this.hitManager.add(paper, rd.bb.add_BB(rn.bb), e);
                 }
