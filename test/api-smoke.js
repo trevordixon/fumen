@@ -408,39 +408,38 @@ async function run() {
     const fine = await gapAboveChords("| C | F:2. A:8 B:8 <Fine> ||", "Fine");
     assert.equal(fine.gap, chordsOnly.gap, "Fine sits above the chords in a staff row too");
 
-    // %SHOW_STAFF="LINE": written rhythm on one line under a plain row. The row is shorter than
-    // a staff row, its barlines are a plain row's, and the other settings draw as before.
+    // %SHOW_STAFF="RHYTHM": a bar's written rhythm is drawn in the bar, without a staff, and its
+    // chord names go above. The row keeps a plain row's barlines and is shorter than a staff row.
     const drawn = async (code) => {
       const [page] = await esm.renderToDrawings(esm.parse(code).track, { paper_height: 0 });
       return page;
     };
-    const rhythm = "| C | F | G | Dm:4. G:8~ :2 ||";
-    const staffPage = await drawn(rhythm);
-    const linePage = await drawn(`%SHOW_STAFF="LINE"\n${rhythm}`);
-    const plainPage = await drawn("| C | F | G | Dm G ||");
-    assert.ok(linePage.height < staffPage.height, "A single-line rhythm row is shorter than a staff row");
-    assert.ok(linePage.height > plainPage.height, "A single-line rhythm row is taller than a plain row");
-    const barlineSpans = (page) => page.commands
-      .filter((c) => c.op === "path" && typeof c.d === "string")
-      .map((c) => c.d.match(/^M\s*([\d.]+)[ ,]([\d.]+)\s*L\s*([\d.]+)[ ,]([\d.]+)$/))
-      .filter((m) => m && m[1] === m[3])
-      .map((m) => Math.abs(m[4] - m[2]));
-    const lineBars = barlineSpans(linePage), plainBars = barlineSpans(plainPage);
-    if (lineBars.length && plainBars.length) {
-      assert.equal(Math.max(...lineBars.slice(0, 3)), Math.max(...plainBars.slice(0, 3)), "Barlines on a single-line row are as tall as on a plain row");
-    }
-    // %SHOW_STAFF="STEMS": the same row with no line.
-    const horizontals = (page) => page.commands
+    const lines = (page, vertical) => page.commands
       .filter((c) => c.op === "path" && typeof c.d === "string" && c.style && c.style.stroke)
       .map((c) => c.d.match(/^M\s*([\d.]+)[ ,]([\d.]+)\s*L\s*([\d.]+)[ ,]([\d.]+)$/))
-      .filter((m) => m && m[2] === m[4]).length;
-    const stemsPage = await drawn(`%SHOW_STAFF="STEMS"\n${rhythm}`);
-    assert.equal(stemsPage.height, linePage.height, "STEMS rows are as tall as LINE rows");
-    assert.equal(horizontals(stemsPage), horizontals(linePage) - 1, "STEMS draws no line under the rhythm");
+      .filter((m) => m && (vertical ? m[1] === m[3] : m[2] === m[4]))
+      .map((m) => ({ x: +m[1], y: +m[2], length: Math.abs(vertical ? m[4] - m[2] : m[3] - m[1]) }));
+    const chordY = (page, name) => page.commands.find((c) => c.op === "text" && c.text === name).y;
+    const rhythm = "| C | F | G | D:4. A:8~ :2 ||";
+    const staffPage = await drawn(rhythm);
+    const rhythmPage = await drawn(`%SHOW_STAFF="RHYTHM"\n${rhythm}`);
+    const plainPage = await drawn("| C | F | G | D A ||");
+    assert.ok(rhythmPage.height < staffPage.height, "A RHYTHM row is shorter than a staff row");
+    assert.ok(rhythmPage.height > plainPage.height, "A RHYTHM row is taller than a plain row");
+    assert.equal(
+      Math.max(...lines(rhythmPage, true).slice(0, 3).map((l) => l.length)),
+      Math.max(...lines(plainPage, true).slice(0, 3).map((l) => l.length)),
+      "Barlines on a RHYTHM row are as tall as on a plain row"
+    );
+    assert.equal(lines(rhythmPage, false).filter((l) => l.length > 100).length, 0, "RHYTHM draws no staff lines");
+    assert.ok(lines(staffPage, false).filter((l) => l.length > 100).length >= 5, "The automatic style still draws its staff");
+    assert.ok(chordY(rhythmPage, "D") < chordY(rhythmPage, "C"), "Chord names of a bar with rhythm sit above those of a plain bar");
+    const similePage = await drawn(`%SHOW_STAFF="RHYTHM"\n| C | F ./. | G | D ||`);
+    assert.ok(chordY(similePage, "F") < chordY(similePage, "C"), "A chord in a bar with a simile mark is lifted too");
     assert.deepEqual(
-      (await drawn(`%SHOW_STAFF="LINE"\n| C | F | G | Dm G ||`)).commands,
+      (await drawn(`%SHOW_STAFF="RHYTHM"\n| C | F | G | D A ||`)).commands,
       plainPage.commands,
-      "A row without written rhythm draws as a plain row under LINE"
+      "A row without written rhythm or a simile mark draws as a plain row under RHYTHM"
     );
     esm.setTextMeasurer(null);
   }

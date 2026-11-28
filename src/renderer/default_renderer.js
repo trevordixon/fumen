@@ -91,16 +91,15 @@ var SR_RENDER_PARAM = {
     row_margin          : 4, // Margin between next y_base and lower edge of Measure Lower Area
     section_margin_top  : 0, // Additional gap before rows that start a new block
     rs_area_height      : 24, // Rhythm Slashes Area // 
-    // %SHOW_STAFF="LINE": written rhythm on a single line under the chords.
-    rs_line_room_above  : 8,  // From the bottom of the chord row down to the line (heads, dots and ties rise above it)
-    rs_line_stem_length : 13, // Stem length below the line
-    rs_line_room_below  : 3,  // Under the stems and beams
-    // %SHOW_STAFF="RHYTHM": written rhythm in the bar, its chord names above.
-    // The chord names go up a little and the rhythm down a little, so the two together sit about
-    // centred on the barlines.
-    rs_inline_chord_lift : 13, // How far above their plain-row place those chord names sit
-    rs_inline_rhythm_drop: 11, // How far below the middle of the bar row the noteheads sit
-    rs_inline_room_below : 14, // Under the bar row, for the stems that overhang it
+    // %SHOW_STAFF="RHYTHM": a bar's written rhythm is drawn in the bar itself, with no staff, and
+    // that bar's chord names go above it. The names go up a little and the rhythm down a little,
+    // so the two together sit about centred on the barlines.
+    rhythm_chord_lift    : 13, // How far above their plain-row place those chord names sit
+    rhythm_drop          : 11, // How far below the middle of the bar row the noteheads sit
+    rhythm_room_below    : 14, // Under the bar row, for the stems that overhang it
+    rhythm_stem_length   : 13, // Stems are shorter than on a staff (note_bar_length)
+    rhythm_flag_stem_extra: 4, // A lone flagged note's stem is this much longer, so its flag clears the head
+    rhythm_ending_raise  : 3,  // An ending's bracket is raised this much, to clear the lifted chord names
     rm_area_height      : 15, // Rehearsal Mark Area
     mu_area_height      : 15, // Measure Upper Area ( Repeat signs area )
     ml_row_height       : 10, // Measure Lower Area ( Lyrics etc.. )
@@ -1573,26 +1572,23 @@ export class DefaultRenderer extends Renderer {
         if (show_staff == "NO") {
             yprof.rs.detected = false;
         }
-        // "STEMS" and "LINE": a row with written rhythm stays a plain row (barlines, time signature
-        // and bare rests in the chord row), with its rhythm underneath: on one thin line ("LINE"),
-        // or on nothing ("STEMS"; the whole and half rest glyphs carry their own short line).
-        // "RHYTHM": as "STEMS", but the rhythm goes in the bar itself, between the barlines, and
-        // that bar's chord names go above it. A chord in a bar with a simile mark goes above too.
+        // "RHYTHM": the row stays a plain row (barlines, time signature, simile marks and bare
+        // rests in the bar row). A bar's written rhythm is drawn in the bar, without a staff, and
+        // that bar's chord names go above it; so does a chord in a bar with a simile mark.
         const chord_with_simile = row_elements_list.some((m) =>
             m.childNodes.some((e) => e instanceof common.Simile) &&
             m.childNodes.some((e) => e instanceof common.Chord));
-        yprof.inline = show_staff == "RHYTHM" && (!!yprof.rs.detected || chord_with_simile);
-        yprof.line = (show_staff == "LINE" || show_staff == "STEMS" || show_staff == "RHYTHM") && !!yprof.rs.detected;
-        yprof.line_drawn = yprof.line && show_staff == "LINE";
-        yprof.staff_frame = !!yprof.rs.detected && !yprof.line;
-        if (yprof.line) {
-            yprof.rs.height = param.rs_line_room_above + param.rs_line_stem_length + param.rs_line_room_below;
-            yprof.rs.margin = [0, 0];
+        yprof.rhythm_in_bar = show_staff == "RHYTHM" && !!yprof.rs.detected;
+        yprof.chords_lifted = show_staff == "RHYTHM" && (!!yprof.rs.detected || chord_with_simile);
+        // Barlines and what goes with them are drawn on the staff only when there is one.
+        yprof.staff_frame = !!yprof.rs.detected && !yprof.rhythm_in_bar;
+        if (yprof.chords_lifted) {
+            yprof.body.margin = [param.margin_top + param.rhythm_chord_lift, param.margin_bottom];
         }
-        if (yprof.inline) {
-            // Room above the bar for the lifted chord names; under it, only what the stems overhang.
-            yprof.body.margin = [param.margin_top + param.rs_inline_chord_lift, param.margin_bottom];
-            if (yprof.line) yprof.rs.height = param.rs_inline_room_below;
+        if (yprof.rhythm_in_bar) {
+            // The rhythm is in the bar row: under it, only what the stems overhang.
+            yprof.rs.height = param.rhythm_room_below;
+            yprof.rs.margin = [0, 0];
         }
 
         // Adjust mu area elements in case of RS area detected
@@ -1639,14 +1635,17 @@ export class DefaultRenderer extends Renderer {
             }
         }
 
-        // Where the rhythm is drawn. Its code works on a five-line staff `height` tall from `y`,
-        // slashes on the middle line; on a single line that staff is only imagined, around the line.
-        yprof.lifted_chord_y = yprof.inline ? yprof.body.y - param.rs_inline_chord_lift : yprof.body.y;
-        yprof.rs_draw = yprof.inline
-            ? { y: yprof.body.y + param.row_height / 2 + param.rs_inline_rhythm_drop - param.rs_area_height / 2, height: param.rs_area_height }
-            : yprof.line
-            ? { y: yprof.rs.y + param.rs_line_room_above - param.rs_area_height / 2, height: param.rs_area_height }
-            : { y: yprof.rs.y, height: yprof.rs.height };
+        yprof.lifted_chord_y = yprof.chords_lifted ? yprof.body.y - param.rhythm_chord_lift : yprof.body.y;
+        // Where the rhythm is drawn, and with which settings. Its code works on a five-line staff
+        // `height` tall from `y`, slashes on the middle line. In the bar that staff is only
+        // imagined, around where the noteheads go.
+        yprof.rs_draw = yprof.rhythm_in_bar
+            ? {
+                y: yprof.body.y + param.row_height / 2 + param.rhythm_drop - param.rs_area_height / 2,
+                height: param.rs_area_height,
+                param: Object.assign({}, param, { note_bar_length: param.rhythm_stem_length, rhythm_without_staff: true })
+            }
+            : { y: yprof.rs.y, height: yprof.rs.height, param: param };
 
         return yprof;
     }
@@ -1815,8 +1814,6 @@ export class DefaultRenderer extends Renderer {
         let fixed_width_details = []; // show be same as num_flexible_rooms
         let num_flexible_rooms = 0;
 
-        // Read by the rhythm drawing (renderer_legacy): heads and rests made for a single line.
-        this.rs_single_line = yprof.line ? (yprof.line_drawn ? "line" : "stems") : false;
         const bar_has_simile = elements.body.some((e) => e instanceof common.Simile);
 
         /**
@@ -1975,7 +1972,7 @@ export class DefaultRenderer extends Renderer {
                         meas_start_x, // NOTE : meas_start_x sould be irrespective of draw_scale.
                         music_context,
                         m,
-                        yprof.line ? Object.assign({}, param, { note_bar_length: param.rs_line_stem_length }) : param,
+                        yprof.rs_draw.param,
                         (draw_scale < 1 ? 0 : room_for_rs_per_elem), // on-screen coordinate
                         balken,
                         (gbei == body_grouping_info.groupedBodyElems.length-1)
@@ -1993,7 +1990,7 @@ export class DefaultRenderer extends Renderer {
                         let balken_element = this.generateBalkenElement(
                             e, x, yprof.rs_draw.height, music_context);
                         let r = this.drawRsAreaWithoutFlagBalken(
-                            false, paper, param, e, balken_element, x, yprof.rs_draw.y, yprof.rs_draw.height);
+                            false, paper, yprof.rs_draw.param, e, balken_element, x, yprof.rs_draw.y, yprof.rs_draw.height);
                         e.renderprop.balken_element = balken_element;
                         rs_area_bounding_box.add_BB(r.bounding_box);
                         x += r.bounding_box.width();
@@ -2261,10 +2258,8 @@ export class DefaultRenderer extends Renderer {
             inner_reharsal_mark, prev_measure, row_starts_block, suppress_section_margin);
         
         var y_body_or_rs_base = yprof.staff_frame ? yprof.rs.y : yprof.body.y;
-        // On a single line the rhythm is under the barlines: "(3 times)" goes under that too.
-        const frame_param = yprof.line
-            ? Object.assign({}, param, { xtimes_mark_y_margin: param.xtimes_mark_y_margin + yprof.rs.height })
-            : param;
+        // "(3 times)" goes under the barline, and under the stems that overhang the bar row.
+        const below_barline = yprof.rhythm_in_bar ? yprof.rs.height : 0;
         var repeat_mark_y_base = yprof.mu.y + yprof.mu.height;
 
 
@@ -2392,8 +2387,9 @@ export class DefaultRenderer extends Renderer {
                         y_body_or_rs_base,
                         yprof.staff_frame ? param.rs_area_height : param.row_height,
                         yprof.staff_frame ? param.rs_area_height : param.base_body_height,
-                        frame_param,
-                        true
+                        param,
+                        true,
+                        below_barline
                     );
                     m.renderprop.y = y_body_or_rs_base;
                     m.renderprop.sx = x;
@@ -2501,8 +2497,9 @@ export class DefaultRenderer extends Renderer {
                         y_body_or_rs_base,
                         yprof.staff_frame ? param.rs_area_height : param.row_height,
                         yprof.staff_frame ? param.rs_area_height : param.base_body_height,
-                        frame_param,
-                        true
+                        param,
+                        true,
+                        below_barline
                     );
 
                     m.renderprop.ex = x;
@@ -2533,7 +2530,7 @@ export class DefaultRenderer extends Renderer {
                 if (e instanceof common.LoopIndicator) {
                     let bb = new graphic.BoundingBox();
                     var oy = 12;
-                    var ly = yprof.body.y - 2 - oy - (yprof.inline ? 3 : 0); // clear of the lifted chord names, and of a direction above
+                    var ly = yprof.body.y - 2 - oy - (yprof.chords_lifted ? param.rhythm_ending_raise : 0);
                     var sx = meas_start_x_actual_boundary;
                     // The bracket runs on over the following bars, to the ending's repeat
                     // sign (or the next ending, or a double/final bar): drawn below, after
@@ -2715,18 +2712,8 @@ export class DefaultRenderer extends Renderer {
 
         } // measure loop
 
-        // 0. Draw 5 lines, or the single line
-        if(yprof.line && !yprof.line_drawn){
-            // "STEMS": no line.
-        }else if(yprof.line){
-            // Only under the bars that have written rhythm; the other bars stay as on a plain row.
-            let line_y = yprof.rs.y + param.rs_line_room_above;
-            row_elements_list.forEach((m) => {
-                let info = m.renderprop.body_grouping_info;
-                if(!info || !info.any_has_length) return;
-                graphic.canvasLine(paper, m.renderprop.meas_start_x, line_y, m.renderprop.meas_end_x - 1, line_y, {width:1});
-            });
-        }else if(yprof.rs.detected){
+        // 0. Draw 5 lines
+        if(yprof.staff_frame){
             let start_x   = row_elements_list[0].renderprop.meas_start_x;
             let end_x = row_elements_list[row_elements_list.length-1].renderprop.meas_end_x - 1; // -1 as meas_end_x point to the next point of end of boundary(= Normally total_width - x_margin)
             for (let i = 0; i < 5; ++i) {
@@ -2909,15 +2896,14 @@ export class DefaultRenderer extends Renderer {
         align, // "l or "c" or "r"
         row_height,
         base_body_height,
-        param,
-        on_single_line = false
+        param
     ) {
         let _5i = base_body_height / 4; 
         var yoffsets = {
-            // On a staff a whole rest hangs from the line above the middle one. On a single line, or
-            // with no line, it hangs at the height a half rest sits at. Both glyphs are the ones
-            // with their own short ledger line, which is what tells them apart with no staff.
-            1: on_single_line ? 0.5 : -_5i - 0.5, // 0.5 is subpixel adjustment
+            // On a staff a whole rest hangs from the line above the middle one. Without a staff it
+            // hangs at the height a half rest sits at. Both glyphs are the ones with their own
+            // short ledger line, which is what tells them apart there.
+            1: param.rhythm_without_staff ? 0.5 : -_5i - 0.5, // 0.5 is subpixel adjustment
             2: (-_5i / 6) * 4 + 0.5,
             4: -_5i * 1.5,
             8: -_5i + 0.5,
@@ -3640,7 +3626,8 @@ export class DefaultRenderer extends Renderer {
         row_height,
         base_body_height,
         param,
-        draw
+        draw,
+        below_barline = 0 // Height of what is drawn under the barline, which "(3 times)" goes under
     ) {
 
         var draw_type = null; // "s, d, lb, le, lb, f"
@@ -3774,7 +3761,7 @@ export class DefaultRenderer extends Renderer {
                         let r = graphic.canvasText(
                             canvas,
                             x + xshift + w,
-                            y_body_base + row_height + param.xtimes_mark_y_margin,
+                            y_body_base + row_height + below_barline + param.xtimes_mark_y_margin,
                             "(" + stimes + " times)",
                             param.base_font_size / 2,
                             "rt", null, null, {font:param.repeat_mark_font}
@@ -3835,7 +3822,7 @@ export class DefaultRenderer extends Renderer {
                         let r = graphic.canvasText(
                             canvas,
                             x + 8,
-                            y_body_base + row_height + param.xtimes_mark_y_margin,
+                            y_body_base + row_height + below_barline + param.xtimes_mark_y_margin,
                             "(" + stimes + " times)",
                             param.base_font_size / 2,
                             "rt", null, null, {font:param.repeat_mark_font}

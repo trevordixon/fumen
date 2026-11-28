@@ -586,8 +586,7 @@ export class Renderer {
                     numdot,
                     _5lines_intv,
                     draw,
-                    balken_element.no_stem,
-                    this.rs_single_line === "line" && !balken_element.no_stem && (d == "1" || d == "2")
+                    balken_element.no_stem
                 );
             } else {
                 ret = this.renderSlash(
@@ -599,8 +598,7 @@ export class Renderer {
                     numdot,
                     _5lines_intv,
                     draw,
-                    balken_element.no_stem,
-                    this.rs_single_line === "line" && !balken_element.no_stem && (d == "1" || d == "2")
+                    balken_element.no_stem
                 );
 
             }
@@ -739,8 +737,7 @@ export class Renderer {
                 "l",
                 row_height,
                 row_height,
-                param,
-                this.rs_single_line || false
+                param
             );
 
             bounding_box.add_BB(r.bb);
@@ -1276,7 +1273,7 @@ export class Renderer {
                 } else {
                     let r = graphic.canvasLine(paper,
                         bar_x,
-                        ys[0] + (this.rs_single_line === "line" && d == 2 ? 0 : 3),
+                        ys[0] + 3,
                         bar_x,
                         ys[0] + (upper_flag ? -param.note_bar_length : param.note_bar_length),
                         {width:1}, true);
@@ -1332,11 +1329,11 @@ export class Renderer {
             let barlen_delta = Math.max(0, (numflag-2) * flagBarLengthDeltaStep);
             let flag_w = _5lines_intv * flagWidthScale;
             let url = "flag_"+(upper_flag?"f":"i")+numflag; // for now numflags <= 4
-            // With the shorter stems of "LINE" and "STEMS", a flag at the staff's size is taller
-            // than its stem and runs up over the notehead. A flagged note's stem is a little
-            // longer there, and its flag is kept below the head.
-            if (this.rs_single_line) {
-                const extra = 4;
+            // Without a staff (%SHOW_STAFF="RHYTHM") stems are shorter, and a flag at the staff's
+            // size is taller than its stem and runs up over the notehead. A flagged note's stem
+            // is a little longer there, and its flag is kept below the head.
+            if (param.rhythm_without_staff) {
+                const extra = param.rhythm_flag_stem_extra;
                 let head_y = Math.max.apply(null, elements[0].balken_element.notes_coord.y);
                 graphic.canvasLine(paper, bar_x,
                     head_y + param.note_bar_length + barlen_delta, bar_x,
@@ -1560,23 +1557,10 @@ export class Renderer {
         return x; //{ x: x, bb: bounding_box };
     }
 
-    renderSlash(paper, group, x, y, d, numdot, _5lines_intv, draw=true, plain=false, diamond=false) {
+    renderSlash(paper, group, x, y, d, numdot, _5lines_intv, draw=true, plain=false) {
         var rsgw = 8;
         var rsgh = _5lines_intv * 2;
         var rsh = 4;
-        // A whole or half note on a single line (%SHOW_STAFF="LINE"): an open diamond, as charts
-        // write it. The open slash head is hard to tell from a filled one with a line through it.
-        // With no line ("STEMS") it keeps the staff's open slash head.
-        if (diamond) {
-            let w = _5lines_intv * 2.2, h = _5lines_intv * 1.1;
-            if (draw) {
-                graphic.canvasPolygon(paper, [[x, y], [x + w / 2, y - h], [x + w, y], [x + w / 2, y + h]], true, false, {lineWidth: 1.6});
-                for (let i = 0; i < numdot; ++i) {
-                    graphic.canvasCircle(paper, x + w + 4 + i * 5, y - _5lines_intv / 2, 1);
-                }
-            }
-            return { bar_reduction: 0, bounding_box:{x:x, y:y - h, w: w + (numdot > 0 ? 4 + numdot * 5 : 0), h: h * 2}};
-        }
         // A beat slash (%SHOW_STAFF="SLASHES"): a long thin stroke, as it is written by hand,
         // not a note's head. It counts a beat and says nothing of length, so it takes no dot.
         if (plain) {
