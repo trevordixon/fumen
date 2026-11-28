@@ -96,8 +96,11 @@ var SR_RENDER_PARAM = {
     rs_line_stem_length : 13, // Stem length below the line
     rs_line_room_below  : 3,  // Under the stems and beams
     // %SHOW_STAFF="RHYTHM": written rhythm in the bar, its chord names above.
-    rs_inline_chord_lift : 23, // How far above the bar row those chord names sit
-    rs_inline_room_below : 6,  // Under the bar row, for the stems that overhang it
+    // The chord names go up a little and the rhythm down a little, so the two together sit about
+    // centred on the barlines.
+    rs_inline_chord_lift : 13, // How far above their plain-row place those chord names sit
+    rs_inline_rhythm_drop: 11, // How far below the middle of the bar row the noteheads sit
+    rs_inline_room_below : 14, // Under the bar row, for the stems that overhang it
     rm_area_height      : 15, // Rehearsal Mark Area
     mu_area_height      : 15, // Measure Upper Area ( Repeat signs area )
     ml_row_height       : 10, // Measure Lower Area ( Lyrics etc.. )
@@ -1640,7 +1643,7 @@ export class DefaultRenderer extends Renderer {
         // slashes on the middle line; on a single line that staff is only imagined, around the line.
         yprof.lifted_chord_y = yprof.inline ? yprof.body.y - param.rs_inline_chord_lift : yprof.body.y;
         yprof.rs_draw = yprof.inline
-            ? { y: yprof.body.y + param.row_height / 2 - 2 - param.rs_area_height / 2, height: param.rs_area_height }
+            ? { y: yprof.body.y + param.row_height / 2 + param.rs_inline_rhythm_drop - param.rs_area_height / 2, height: param.rs_area_height }
             : yprof.line
             ? { y: yprof.rs.y + param.rs_line_room_above - param.rs_area_height / 2, height: param.rs_area_height }
             : { y: yprof.rs.y, height: yprof.rs.height };
@@ -2530,7 +2533,7 @@ export class DefaultRenderer extends Renderer {
                 if (e instanceof common.LoopIndicator) {
                     let bb = new graphic.BoundingBox();
                     var oy = 12;
-                    var ly = yprof.body.y - 2 - oy;
+                    var ly = yprof.body.y - 2 - oy - (yprof.inline ? 3 : 0); // clear of the lifted chord names, and of a direction above
                     var sx = meas_start_x_actual_boundary;
                     // The bracket runs on over the following bars, to the ending's repeat
                     // sign (or the next ending, or a double/final bar): drawn below, after
