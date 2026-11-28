@@ -407,6 +407,33 @@ async function run() {
     assert.ok(withStaff.gap >= withStaff.chordSize / 2, "A direction in a staff row is drawn above the chord row, not in it");
     const fine = await gapAboveChords("| C | F:2. A:8 B:8 <Fine> ||", "Fine");
     assert.equal(fine.gap, chordsOnly.gap, "Fine sits above the chords in a staff row too");
+
+    // %SHOW_STAFF="LINE": written rhythm on one line under a plain row. The row is shorter than
+    // a staff row, its barlines are a plain row's, and the other settings draw as before.
+    const drawn = async (code) => {
+      const [page] = await esm.renderToDrawings(esm.parse(code).track, { paper_height: 0 });
+      return page;
+    };
+    const rhythm = "| C | F | G | Dm:4. G:8~ :2 ||";
+    const staffPage = await drawn(rhythm);
+    const linePage = await drawn(`%SHOW_STAFF="LINE"\n${rhythm}`);
+    const plainPage = await drawn("| C | F | G | Dm G ||");
+    assert.ok(linePage.height < staffPage.height, "A single-line rhythm row is shorter than a staff row");
+    assert.ok(linePage.height > plainPage.height, "A single-line rhythm row is taller than a plain row");
+    const barlineSpans = (page) => page.commands
+      .filter((c) => c.op === "path" && typeof c.d === "string")
+      .map((c) => c.d.match(/^M\s*([\d.]+)[ ,]([\d.]+)\s*L\s*([\d.]+)[ ,]([\d.]+)$/))
+      .filter((m) => m && m[1] === m[3])
+      .map((m) => Math.abs(m[4] - m[2]));
+    const lineBars = barlineSpans(linePage), plainBars = barlineSpans(plainPage);
+    if (lineBars.length && plainBars.length) {
+      assert.equal(Math.max(...lineBars.slice(0, 3)), Math.max(...plainBars.slice(0, 3)), "Barlines on a single-line row are as tall as on a plain row");
+    }
+    assert.deepEqual(
+      (await drawn(`%SHOW_STAFF="LINE"\n| C | F | G | Dm G ||`)).commands,
+      plainPage.commands,
+      "A row without written rhythm draws as a plain row under LINE"
+    );
     esm.setTextMeasurer(null);
   }
 

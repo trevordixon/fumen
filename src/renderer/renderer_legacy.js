@@ -586,7 +586,8 @@ export class Renderer {
                     numdot,
                     _5lines_intv,
                     draw,
-                    balken_element.no_stem
+                    balken_element.no_stem,
+                    !!this.rs_single_line && !balken_element.no_stem && (d == "1" || d == "2")
                 );
             } else {
                 ret = this.renderSlash(
@@ -598,7 +599,8 @@ export class Renderer {
                     numdot,
                     _5lines_intv,
                     draw,
-                    balken_element.no_stem
+                    balken_element.no_stem,
+                    !!this.rs_single_line && !balken_element.no_stem && (d == "1" || d == "2")
                 );
 
             }
@@ -737,7 +739,8 @@ export class Renderer {
                 "l",
                 row_height,
                 row_height,
-                param
+                param,
+                !!this.rs_single_line
             );
 
             bounding_box.add_BB(r.bb);
@@ -1273,7 +1276,7 @@ export class Renderer {
                 } else {
                     let r = graphic.canvasLine(paper,
                         bar_x,
-                        ys[0] + 3,
+                        ys[0] + (this.rs_single_line && d == 2 ? 0 : 3),
                         bar_x,
                         ys[0] + (upper_flag ? -param.note_bar_length : param.note_bar_length),
                         {width:1}, true);
@@ -1543,10 +1546,22 @@ export class Renderer {
         return x; //{ x: x, bb: bounding_box };
     }
 
-    renderSlash(paper, group, x, y, d, numdot, _5lines_intv, draw=true, plain=false) {
+    renderSlash(paper, group, x, y, d, numdot, _5lines_intv, draw=true, plain=false, diamond=false) {
         var rsgw = 8;
         var rsgh = _5lines_intv * 2;
         var rsh = 4;
+        // A whole or half note on a single line (%SHOW_STAFF="LINE"): an open diamond, as charts
+        // write it. The open slash head is hard to tell from a filled one with a line through it.
+        if (diamond) {
+            let w = _5lines_intv * 2.2, h = _5lines_intv * 1.1;
+            if (draw) {
+                graphic.canvasPolygon(paper, [[x, y], [x + w / 2, y - h], [x + w, y], [x + w / 2, y + h]], true, false, {lineWidth: 1.6});
+                for (let i = 0; i < numdot; ++i) {
+                    graphic.canvasCircle(paper, x + w + 4 + i * 5, y - _5lines_intv / 2, 1);
+                }
+            }
+            return { bar_reduction: 0, bounding_box:{x:x, y:y - h, w: w + (numdot > 0 ? 4 + numdot * 5 : 0), h: h * 2}};
+        }
         // A beat slash (%SHOW_STAFF="SLASHES"): a long thin stroke, as it is written by hand,
         // not a note's head. It counts a beat and says nothing of length, so it takes no dot.
         if (plain) {

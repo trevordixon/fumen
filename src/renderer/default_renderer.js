@@ -91,6 +91,10 @@ var SR_RENDER_PARAM = {
     row_margin          : 4, // Margin between next y_base and lower edge of Measure Lower Area
     section_margin_top  : 0, // Additional gap before rows that start a new block
     rs_area_height      : 24, // Rhythm Slashes Area // 
+    // %SHOW_STAFF="LINE": written rhythm on a single line under the chords.
+    rs_line_room_above  : 8,  // From the bottom of the chord row down to the line (heads, dots and ties rise above it)
+    rs_line_stem_length : 13, // Stem length below the line
+    rs_line_room_below  : 3,  // Under the stems and beams
     rm_area_height      : 15, // Rehearsal Mark Area
     mu_area_height      : 15, // Measure Upper Area ( Repeat signs area )
     ml_row_height       : 10, // Measure Lower Area ( Lyrics etc.. )
@@ -1563,6 +1567,14 @@ export class DefaultRenderer extends Renderer {
         if (show_staff == "NO") {
             yprof.rs.detected = false;
         }
+        // "LINE": a row with written rhythm stays a plain row (barlines, time signature and bare
+        // rests in the chord row), with its rhythm on one line underneath.
+        yprof.line = show_staff == "LINE" && !!yprof.rs.detected;
+        yprof.staff_frame = !!yprof.rs.detected && !yprof.line;
+        if (yprof.line) {
+            yprof.rs.height = param.rs_line_room_above + param.rs_line_stem_length + param.rs_line_room_below;
+            yprof.rs.margin = [0, 0];
+        }
 
         // Adjust mu area elements in case of RS area detected
         if(yprof.rs.detected){
@@ -1607,7 +1619,13 @@ export class DefaultRenderer extends Renderer {
                 }
             }
         }
-       
+
+        // Where the rhythm is drawn. Its code works on a five-line staff `height` tall from `y`,
+        // slashes on the middle line; on a single line that staff is only imagined, around the line.
+        yprof.rs_draw = yprof.line
+            ? { y: yprof.rs.y + param.rs_line_room_above - param.rs_area_height / 2, height: param.rs_area_height }
+            : { y: yprof.rs.y, height: yprof.rs.height };
+
         return yprof;
     }
 
@@ -1775,6 +1793,9 @@ export class DefaultRenderer extends Renderer {
         let fixed_width_details = []; // show be same as num_flexible_rooms
         let num_flexible_rooms = 0;
 
+        // Read by the rhythm drawing (renderer_legacy): heads and rests made for a single line.
+        this.rs_single_line = !!yprof.line;
+
         /**
          * Explanation for scaling policy
          * In fumen, x-axis scaling is applied when there is no enough space to an element fit in without compressing it.
@@ -1926,12 +1947,12 @@ export class DefaultRenderer extends Renderer {
                         draw_scale,
                         element_group.elems,
                         paper,
-                        yprof.rs.y,
-                        yprof.rs.height,
+                        yprof.rs_draw.y,
+                        yprof.rs_draw.height,
                         meas_start_x, // NOTE : meas_start_x sould be irrespective of draw_scale.
                         music_context,
                         m,
-                        param,
+                        yprof.line ? Object.assign({}, param, { note_bar_length: param.rs_line_stem_length }) : param,
                         (draw_scale < 1 ? 0 : room_for_rs_per_elem), // on-screen coordinate
                         balken,
                         (gbei == body_grouping_info.groupedBodyElems.length-1)
@@ -1947,9 +1968,9 @@ export class DefaultRenderer extends Renderer {
                     let tmp_fixed_width_details = [];
                     element_group.elems.forEach(e=>{
                         let balken_element = this.generateBalkenElement(
-                            e, x, yprof.rs.height, music_context);
+                            e, x, yprof.rs_draw.height, music_context);
                         let r = this.drawRsAreaWithoutFlagBalken(
-                            false, paper, param, e, balken_element, x, yprof.rs.y, yprof.rs.height);
+                            false, paper, param, e, balken_element, x, yprof.rs_draw.y, yprof.rs_draw.height);
                         e.renderprop.balken_element = balken_element;
                         rs_area_bounding_box.add_BB(r.bounding_box);
                         x += r.bounding_box.width();
@@ -2035,8 +2056,8 @@ export class DefaultRenderer extends Renderer {
                             x / draw_scale,
                             y_body_or_rs_base,
                             "l",
-                            yprof.rs.detected ? param.rs_area_height : param.row_height,
-                            yprof.rs.detected ? param.rs_area_height : param.base_body_height,
+                            yprof.staff_frame ? param.rs_area_height : param.row_height,
+                            yprof.staff_frame ? param.rs_area_height : param.base_body_height,
                             param
                         );
                         if (draw && e.exceptinal_comment) {
@@ -2064,8 +2085,8 @@ export class DefaultRenderer extends Renderer {
                             paper,
                             x / draw_scale,
                             y_body_or_rs_base,
-                            yprof.rs.detected ? param.rs_area_height : param.row_height,
-                            yprof.rs.detected ? param.rs_area_height : param.base_body_height,
+                            yprof.staff_frame ? param.rs_area_height : param.row_height,
+                            yprof.staff_frame ? param.rs_area_height : param.base_body_height,
                             e.numslash,
                             false,
                             "l"
@@ -2216,7 +2237,11 @@ export class DefaultRenderer extends Renderer {
         var yprof = this.screeningYAreas(row_elements_list, y_base, param, show_staff, 
             inner_reharsal_mark, prev_measure, row_starts_block, suppress_section_margin);
         
-        var y_body_or_rs_base = yprof.rs.detected ? yprof.rs.y : yprof.body.y;
+        var y_body_or_rs_base = yprof.staff_frame ? yprof.rs.y : yprof.body.y;
+        // On a single line the rhythm is under the barlines: "(3 times)" goes under that too.
+        const frame_param = yprof.line
+            ? Object.assign({}, param, { xtimes_mark_y_margin: param.xtimes_mark_y_margin + yprof.rs.height })
+            : param;
         var repeat_mark_y_base = yprof.mu.y + yprof.mu.height;
 
 
@@ -2342,9 +2367,9 @@ export class DefaultRenderer extends Renderer {
                         paper,
                         x,
                         y_body_or_rs_base,
-                        yprof.rs.detected ? param.rs_area_height : param.row_height,
-                        yprof.rs.detected ? param.rs_area_height : param.base_body_height,
-                        param,
+                        yprof.staff_frame ? param.rs_area_height : param.row_height,
+                        yprof.staff_frame ? param.rs_area_height : param.base_body_height,
+                        frame_param,
                         true
                     );
                     m.renderprop.y = y_body_or_rs_base;
@@ -2357,8 +2382,8 @@ export class DefaultRenderer extends Renderer {
                 } else if (e instanceof common.Time) {
                     let chord_str_height = graphic.getCharProfile(
                         param.base_font_size, null, paper.ratio, paper.zoom).height;
-                    let row_height = yprof.rs.detected ?param.rs_area_height : param.row_height;
-                    let cont_height = yprof.rs.detected ?param.rs_area_height : chord_str_height;
+                    let row_height = yprof.staff_frame ? param.rs_area_height : param.row_height;
+                    let cont_height = yprof.staff_frame ? param.rs_area_height : chord_str_height;
                     const rhythmProfile = (this.music_font_profile && this.music_font_profile.rhythm) || {};
                     const timeSigScale = (typeof rhythmProfile.timeSigScale === "number") ? rhythmProfile.timeSigScale : 1.0;
                     const timeSigLeftMargin = (typeof rhythmProfile.timeSigLeftMargin === "number") ? rhythmProfile.timeSigLeftMargin : 2;
@@ -2451,9 +2476,9 @@ export class DefaultRenderer extends Renderer {
                         paper,
                         x,
                         y_body_or_rs_base,
-                        yprof.rs.detected ? param.rs_area_height : param.row_height,
-                        yprof.rs.detected ? param.rs_area_height : param.base_body_height,
-                        param,
+                        yprof.staff_frame ? param.rs_area_height : param.row_height,
+                        yprof.staff_frame ? param.rs_area_height : param.base_body_height,
+                        frame_param,
                         true
                     );
 
@@ -2506,7 +2531,7 @@ export class DefaultRenderer extends Renderer {
                     );
                     this.hitManager.add(paper, bb.add_BB(r.bb), e);
                 } else if (e instanceof common.LongRest) {
-                    let height = yprof.rs.detected ? param.rs_area_height : param.row_height;
+                    let height = yprof.staff_frame ? param.rs_area_height : param.row_height;
                     let sx =
                         meas_start_x +
                         header_width; // header_width does not include header_body_margin
@@ -2587,8 +2612,8 @@ export class DefaultRenderer extends Renderer {
                         (sx + fx) / 2,
                         y_body_or_rs_base,
                         "c",
-                        yprof.rs.detected ? param.rs_area_height : param.row_height,
-                        yprof.rs.detected ? param.rs_area_height : param.base_body_height,
+                        yprof.staff_frame ? param.rs_area_height : param.row_height,
+                        yprof.staff_frame ? param.rs_area_height : param.base_body_height,
                         param
                     );
                     this.hitManager.add(paper, cr.bb, e);
@@ -2608,8 +2633,8 @@ export class DefaultRenderer extends Renderer {
                         paper,
                         (sx + fx) / 2,
                         y_body_or_rs_base,
-                        yprof.rs.detected ? param.rs_area_height : param.row_height,
-                        yprof.rs.detected ? param.rs_area_height : param.base_body_height,
+                        yprof.staff_frame ? param.rs_area_height : param.row_height,
+                        yprof.staff_frame ? param.rs_area_height : param.base_body_height,
                         e.numslash,
                         false,
                         "c"
@@ -2667,8 +2692,16 @@ export class DefaultRenderer extends Renderer {
 
         } // measure loop
 
-        // 0. Draw 5 lines
-        if(yprof.rs.detected){
+        // 0. Draw 5 lines, or the single line
+        if(yprof.line){
+            // Only under the bars that have written rhythm; the other bars stay as on a plain row.
+            let line_y = yprof.rs.y + param.rs_line_room_above;
+            row_elements_list.forEach((m) => {
+                let info = m.renderprop.body_grouping_info;
+                if(!info || !info.any_has_length) return;
+                graphic.canvasLine(paper, m.renderprop.meas_start_x, line_y, m.renderprop.meas_end_x - 1, line_y, {width:1});
+            });
+        }else if(yprof.rs.detected){
             let start_x   = row_elements_list[0].renderprop.meas_start_x;
             let end_x = row_elements_list[row_elements_list.length-1].renderprop.meas_end_x - 1; // -1 as meas_end_x point to the next point of end of boundary(= Normally total_width - x_margin)
             for (let i = 0; i < 5; ++i) {
@@ -2851,11 +2884,14 @@ export class DefaultRenderer extends Renderer {
         align, // "l or "c" or "r"
         row_height,
         base_body_height,
-        param
+        param,
+        on_single_line = false
     ) {
         let _5i = base_body_height / 4; 
         var yoffsets = {
-            1: -_5i - 0.5, // 0.5 is subpixel adjustment
+            // On a staff a whole rest hangs from the line above the middle one. On a single line it
+            // hangs from that line, as a half rest sits on it.
+            1: on_single_line ? 0.5 : -_5i - 0.5, // 0.5 is subpixel adjustment
             2: (-_5i / 6) * 4 + 0.5,
             4: -_5i * 1.5,
             8: -_5i + 0.5,
