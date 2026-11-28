@@ -862,7 +862,8 @@ export class Parser {
     /**
      * Beat slashes: under %SHOW_SLASHES="YES", a bar whose chords have no lengths is drawn with
      * one plain slash (no stem) on each beat, each chord over the beat it comes in on. With or
-     * without a staff: that is %SHOW_STAFF's. %SHOW_STAFF="SLASHES" is both, a staff and slashes.
+     * without a staff: that is %SHOW_STAFF's. (%SHOW_STAFF="SLASHES" is the old way to write
+     * a staff with slashes, now %SHOW_STAFF="YES" with %SHOW_SLASHES="YES"; it is still read.)
      * It says "this many beats, play as you like", where written lengths say "play this rhythm".
      *
      * The slashes are drawn only, never written back (impliedFill), and a chord keeps what was

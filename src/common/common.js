@@ -10,7 +10,7 @@ let VARIABLE_DEFAULT = {
     "SUB_TITLE": null,
     "ARTIST" : null,
     "SHOW_FOOTER": "YES",
-    "SHOW_STAFF": "NO", // No staff: written rhythm is drawn in the bar. "YES", "SLASHES" and "AUTO" (rows with rhythm) draw a staff
+    "SHOW_STAFF": "NO", // No staff: written rhythm is drawn in the bar. "YES" and "AUTO" (rows with rhythm) draw a staff
     "SHOW_SLASHES": "NO", // "YES": a slash on each beat of a bar without written rhythm
     "TRANSPOSE" : 0,
     "KEY": "C",

@@ -1571,8 +1571,9 @@ export class DefaultRenderer extends Renderer {
                 }
             }
         }
-        // A staff is drawn only where it is asked for: "YES" (every row), "SLASHES", and "AUTO"
-        // (each row with written rhythm). "NO", the default, draws none: rhythm goes in the bar.
+        // A staff is drawn only where it is asked for: "YES" (every row) and "AUTO" (each row with
+        // written rhythm). "NO", the default, draws none: rhythm goes in the bar. "SLASHES" is
+        // the old way to write "YES" with %SHOW_SLASHES="YES", and is still read.
         // A row with pitched notes gets its staff whatever the setting: they mean nothing without one.
         const no_staff = !(show_staff == "YES" || show_staff == "SLASHES" || show_staff == "AUTO") && !pitches_detected;
         // Without a staff the row stays a plain row (barlines, time signature, simile marks and bare
