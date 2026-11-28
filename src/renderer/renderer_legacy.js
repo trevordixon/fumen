@@ -587,7 +587,7 @@ export class Renderer {
                     _5lines_intv,
                     draw,
                     balken_element.no_stem,
-                    !!this.rs_single_line && !balken_element.no_stem && (d == "1" || d == "2")
+                    this.rs_single_line === "line" && !balken_element.no_stem && (d == "1" || d == "2")
                 );
             } else {
                 ret = this.renderSlash(
@@ -600,7 +600,7 @@ export class Renderer {
                     _5lines_intv,
                     draw,
                     balken_element.no_stem,
-                    !!this.rs_single_line && !balken_element.no_stem && (d == "1" || d == "2")
+                    this.rs_single_line === "line" && !balken_element.no_stem && (d == "1" || d == "2")
                 );
 
             }
@@ -1276,7 +1276,7 @@ export class Renderer {
                 } else {
                     let r = graphic.canvasLine(paper,
                         bar_x,
-                        ys[0] + (this.rs_single_line && d == 2 ? 0 : 3),
+                        ys[0] + (this.rs_single_line === "line" && d == 2 ? 0 : 3),
                         bar_x,
                         ys[0] + (upper_flag ? -param.note_bar_length : param.note_bar_length),
                         {width:1}, true);
@@ -1552,6 +1552,7 @@ export class Renderer {
         var rsh = 4;
         // A whole or half note on a single line (%SHOW_STAFF="LINE"): an open diamond, as charts
         // write it. The open slash head is hard to tell from a filled one with a line through it.
+        // With no line ("STEMS") it keeps the staff's open slash head.
         if (diamond) {
             let w = _5lines_intv * 2.2, h = _5lines_intv * 1.1;
             if (draw) {
