@@ -408,9 +408,9 @@ async function run() {
     const fine = await gapAboveChords("%SHOW_STAFF=\"YES\"\n| C | F:2. A:8 B:8 <Fine> ||", "Fine");
     assert.equal(fine.gap, chordsOnly.gap, "Fine sits above the chords in a staff row too");
 
-    // Without a staff (%SHOW_STAFF="NO", the default; "AUTO" is the same) a bar's written rhythm is
+    // Without a staff (%SHOW_STAFF="NO", the default) a bar's written rhythm is
     // drawn in the bar and its chord names go above. The row keeps a plain row's barlines and is
-    // shorter than a staff row. "YES" draws the staff.
+    // shorter than a staff row. "YES" draws the staff; "AUTO" draws it under rows with rhythm.
     const drawn = async (code) => {
       const [page] = await esm.renderToDrawings(esm.parse(code).track, { paper_height: 0 });
       return page;
@@ -425,8 +425,9 @@ async function run() {
     const staffPage = await drawn(`%SHOW_STAFF="YES"\n${rhythm}`);
     const rhythmPage = await drawn(rhythm);
     assert.deepEqual((await drawn(`%SHOW_STAFF="NO"\n${rhythm}`)).commands, rhythmPage.commands, "NO is the default");
-    assert.deepEqual((await drawn(`%SHOW_STAFF="AUTO"\n${rhythm}`)).commands, rhythmPage.commands, "AUTO draws as NO");
+    assert.deepEqual((await drawn(`%SHOW_STAFF="AUTO"\n${rhythm}`)).commands, staffPage.commands, "AUTO draws a staff under a row with rhythm");
     const plainPage = await drawn("| C | F | G | D A ||");
+    assert.deepEqual((await drawn(`%SHOW_STAFF="AUTO"\n| C | F | G | D A ||`)).commands, plainPage.commands, "AUTO draws no staff under a row without rhythm");
     assert.ok(rhythmPage.height < staffPage.height, "A row with rhythm and no staff is shorter than a staff row");
     assert.ok(rhythmPage.height > plainPage.height, "A row with rhythm and no staff is taller than a plain row");
     assert.equal(

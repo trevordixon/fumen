@@ -1569,9 +1569,9 @@ export class DefaultRenderer extends Renderer {
                 }
             }
         }
-        // A staff is drawn only where it is asked for: "YES" (every row) and "SLASHES". Anything
-        // else ("NO", the default; "AUTO") draws none, and written rhythm goes in the bar.
-        const no_staff = !(show_staff == "YES" || show_staff == "SLASHES");
+        // A staff is drawn only where it is asked for: "YES" (every row), "SLASHES", and "AUTO"
+        // (each row with written rhythm). "NO", the default, draws none: rhythm goes in the bar.
+        const no_staff = !(show_staff == "YES" || show_staff == "SLASHES" || show_staff == "AUTO");
         // Without a staff the row stays a plain row (barlines, time signature, simile marks and bare
         // rests in the bar row). A bar's written rhythm is drawn in the bar, without a staff, and
         // that bar's chord names go above it; so does a chord in a bar with a simile mark.
