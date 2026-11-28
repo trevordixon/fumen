@@ -95,6 +95,9 @@ var SR_RENDER_PARAM = {
     rs_line_room_above  : 8,  // From the bottom of the chord row down to the line (heads, dots and ties rise above it)
     rs_line_stem_length : 13, // Stem length below the line
     rs_line_room_below  : 3,  // Under the stems and beams
+    // %SHOW_STAFF="RHYTHM": written rhythm in the bar, its chord names above.
+    rs_inline_chord_lift : 23, // How far above the bar row those chord names sit
+    rs_inline_room_below : 6,  // Under the bar row, for the stems that overhang it
     rm_area_height      : 15, // Rehearsal Mark Area
     mu_area_height      : 15, // Measure Upper Area ( Repeat signs area )
     ml_row_height       : 10, // Measure Lower Area ( Lyrics etc.. )
@@ -1570,12 +1573,23 @@ export class DefaultRenderer extends Renderer {
         // "STEMS" and "LINE": a row with written rhythm stays a plain row (barlines, time signature
         // and bare rests in the chord row), with its rhythm underneath: on one thin line ("LINE"),
         // or on nothing ("STEMS"; the whole and half rest glyphs carry their own short line).
-        yprof.line = (show_staff == "LINE" || show_staff == "STEMS") && !!yprof.rs.detected;
+        // "RHYTHM": as "STEMS", but the rhythm goes in the bar itself, between the barlines, and
+        // that bar's chord names go above it. A chord in a bar with a simile mark goes above too.
+        const chord_with_simile = row_elements_list.some((m) =>
+            m.childNodes.some((e) => e instanceof common.Simile) &&
+            m.childNodes.some((e) => e instanceof common.Chord));
+        yprof.inline = show_staff == "RHYTHM" && (!!yprof.rs.detected || chord_with_simile);
+        yprof.line = (show_staff == "LINE" || show_staff == "STEMS" || show_staff == "RHYTHM") && !!yprof.rs.detected;
         yprof.line_drawn = yprof.line && show_staff == "LINE";
         yprof.staff_frame = !!yprof.rs.detected && !yprof.line;
         if (yprof.line) {
             yprof.rs.height = param.rs_line_room_above + param.rs_line_stem_length + param.rs_line_room_below;
             yprof.rs.margin = [0, 0];
+        }
+        if (yprof.inline) {
+            // Room above the bar for the lifted chord names; under it, only what the stems overhang.
+            yprof.body.margin = [param.margin_top + param.rs_inline_chord_lift, param.margin_bottom];
+            if (yprof.line) yprof.rs.height = param.rs_inline_room_below;
         }
 
         // Adjust mu area elements in case of RS area detected
@@ -1624,7 +1638,10 @@ export class DefaultRenderer extends Renderer {
 
         // Where the rhythm is drawn. Its code works on a five-line staff `height` tall from `y`,
         // slashes on the middle line; on a single line that staff is only imagined, around the line.
-        yprof.rs_draw = yprof.line
+        yprof.lifted_chord_y = yprof.inline ? yprof.body.y - param.rs_inline_chord_lift : yprof.body.y;
+        yprof.rs_draw = yprof.inline
+            ? { y: yprof.body.y + param.row_height / 2 - 2 - param.rs_area_height / 2, height: param.rs_area_height }
+            : yprof.line
             ? { y: yprof.rs.y + param.rs_line_room_above - param.rs_area_height / 2, height: param.rs_area_height }
             : { y: yprof.rs.y, height: yprof.rs.height };
 
@@ -1797,6 +1814,7 @@ export class DefaultRenderer extends Renderer {
 
         // Read by the rhythm drawing (renderer_legacy): heads and rests made for a single line.
         this.rs_single_line = yprof.line ? (yprof.line_drawn ? "line" : "stems") : false;
+        const bar_has_simile = elements.body.some((e) => e instanceof common.Simile);
 
         /**
          * Explanation for scaling policy
@@ -1897,7 +1915,7 @@ export class DefaultRenderer extends Renderer {
                         key,
                         paper,
                         x / draw_scale,
-                        yprof.body.y,
+                        yprof.lifted_chord_y,
                         param,
                         C7_width
                     );
@@ -2011,7 +2029,7 @@ export class DefaultRenderer extends Renderer {
                             key,
                             paper,
                             x / draw_scale,
-                            yprof.body.y,
+                            bar_has_simile ? yprof.lifted_chord_y : yprof.body.y,
                             param,
                             C7_width
                         );
