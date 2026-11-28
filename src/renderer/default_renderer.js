@@ -106,7 +106,6 @@ var SR_RENDER_PARAM = {
     ml_margin_top       : 0, // Margin between (chord/rythm slash) and measure lower(lyrics etc) rea
     ml_margin_bottom    : 0, // Margin between (chord/rythm slash) and measure lower(lyrics etc) rea
 
-    repeat_mark_y_margin: 2, // RS are upper/bootom and Repeat Marks( DalSegno, DaCapo, Fine, xX ) y margin in case RS are is shown.
     xtimes_mark_y_margin: 2, // Margin between body/RS are and "(x times)" mark.
 
     // Horizontal settings
@@ -1521,8 +1520,11 @@ export class DefaultRenderer extends Renderer {
                     e instanceof common.DaCapo ||
                     e instanceof common.Fine
                 ){
-                    // Provisinally, judged as mu element. In case of RS detected, it will goes to body area.
+                    // Drawn in the mu row, above the chords, with or without a staff. With a
+                    // staff they used to go in the chord row itself, on top of any chord late
+                    // in the bar ("| Dm7b5:2. <:8 Ab:8 Bb:8 <D.S. al Coda> ||").
                     yprof.mu.detected = true;
+                    fixed_mu_elem_detected = true;
                 } else if(
                     e instanceof common.Coda ||
                     e instanceof common.Segno ||
@@ -2215,10 +2217,8 @@ export class DefaultRenderer extends Renderer {
             inner_reharsal_mark, prev_measure, row_starts_block, suppress_section_margin);
         
         var y_body_or_rs_base = yprof.rs.detected ? yprof.rs.y : yprof.body.y;
-        var repeat_mark_y_base = yprof.rs.detected ? 
-            yprof.rs.y - param.repeat_mark_y_margin :
-            yprof.mu.y + yprof.mu.height;
-            
+        var repeat_mark_y_base = yprof.mu.y + yprof.mu.height;
+
 
         // if ylimit is specified, and drawing region surpass that limit, do not render
         if (ylimit !== null && yprof.end.y > ylimit) {

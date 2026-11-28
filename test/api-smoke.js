@@ -382,6 +382,34 @@ async function run() {
     assert.equal(plainRests[0].exportCode(), "r:1");
   }
 
+  // A jump direction at the end of a bar is drawn in the row above the chords, with or without
+  // a staff. In a bar with written rhythm it was drawn in the chord row, on top of a chord late
+  // in the bar.
+  {
+    esm.setTextMeasurer({
+      measureText: (font, text) => {
+        const px = parseFloat((font.match(/([\d.]+)px/) || [0, 10])[1]);
+        return { width: text.length * px * 0.6, actualBoundingBoxAscent: px * 0.7, actualBoundingBoxDescent: px * 0.2 };
+      },
+      alphabeticOffset: () => 0
+    });
+    const gapAboveChords = async (code, mark) => {
+      const [page] = await esm.renderToDrawings(esm.parse(code).track);
+      const texts = page.commands.filter((c) => c.op === "text");
+      const direction = texts.find((c) => c.text === mark);
+      const chord = texts.find((c) => c.text === "B");
+      assert.ok(direction && chord, `Expected ${mark} and the chord B to be drawn for ${code}`);
+      return { gap: chord.y - direction.y, chordSize: parseFloat(chord.font) };
+    };
+    const withStaff = await gapAboveChords("| C | Dm7b5:2. <:8 Ab:8 Bb:8 <D.S. al Coda> ||", "D.S. al Coda");
+    const chordsOnly = await gapAboveChords("| C | Dm7b5 Ab Bb <D.S. al Coda> ||", "D.S. al Coda");
+    assert.equal(withStaff.gap, chordsOnly.gap, "A direction sits as far above the chords with a staff as without");
+    assert.ok(withStaff.gap >= withStaff.chordSize / 2, "A direction in a staff row is drawn above the chord row, not in it");
+    const fine = await gapAboveChords("| C | F:2. A:8 B:8 <Fine> ||", "Fine");
+    assert.equal(fine.gap, chordsOnly.gap, "Fine sits above the chords in a staff row too");
+    esm.setTextMeasurer(null);
+  }
+
   console.warn = originalWarn;
   console.log("API smoke tests passed");
 }
