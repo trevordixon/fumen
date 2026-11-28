@@ -438,6 +438,13 @@ async function run() {
     assert.equal(lines(rhythmPage, false).filter((l) => l.length > 100).length, 0, "No staff lines are drawn by default");
     assert.ok(lines(staffPage, false).filter((l) => l.length > 100).length >= 5, "YES draws the staff");
     assert.ok(chordY(rhythmPage, "D") < chordY(rhythmPage, "C"), "Chord names of a bar with rhythm sit above those of a plain bar");
+    // Pitched notes force the staff for their row, whatever the setting; other rows keep theirs.
+    const staffLines = (page) => lines(page, false).filter((l) => l.length > 100).length;
+    const pitched = "| C | C:((C3,E3,G3):4) :((D3,F#3):4) F:((A3):2) | G | D ||";
+    assert.equal(staffLines(await drawn(pitched)), 5, "A row with pitched notes is drawn on a staff by default");
+    assert.equal(staffLines(await drawn(`%SHOW_STAFF="NO"\n${pitched}`)), 5, "and under SHOW_STAFF=NO");
+    assert.equal(staffLines(await drawn(`${pitched}\n| C | F:4. G:8~ :2 | G | D ||`)), 5, "A row of plain rhythm after it still has no staff");
+
     // Beat slashes are their own switch, with or without a staff.
     const slashHeads = (page) => page.commands.filter((c) => c.op === "path" && c.style && c.style.fill && c.style.fill !== "white").length;
     const slashedNoStaff = await drawn(`%SHOW_SLASHES="YES"\n| C | F | G | D A ||`);
