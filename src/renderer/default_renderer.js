@@ -91,7 +91,7 @@ var SR_RENDER_PARAM = {
     row_margin          : 4, // Margin between next y_base and lower edge of Measure Lower Area
     section_margin_top  : 0, // Additional gap before rows that start a new block
     rs_area_height      : 24, // Rhythm Slashes Area // 
-    // Without a staff (%SHOW_STAFF="NO", the default) a bar's written rhythm is drawn in the bar itself, and
+    // Without a staff (the default) a bar's written rhythm is drawn in the bar itself, and
     // that bar's chord names go above it. The names go up a little and the rhythm down a little,
     // so the two together sit about centred on the barlines.
     rhythm_chord_lift    : 13, // How far above their plain-row place those chord names sit
@@ -1571,11 +1571,11 @@ export class DefaultRenderer extends Renderer {
                 }
             }
         }
-        // A staff is drawn only where it is asked for: "YES" (every row) and "AUTO" (each row with
-        // written rhythm). "NO", the default, draws none: rhythm goes in the bar. "SLASHES" is
-        // the old way to write "YES" with %SHOW_SLASHES="YES", and is still read.
-        // A row with pitched notes gets its staff whatever the setting: they mean nothing without one.
-        const no_staff = !(show_staff == "YES" || show_staff == "SLASHES" || show_staff == "AUTO") && !pitches_detected;
+        // A staff is drawn only where it is needed or asked for: under a row with pitched notes,
+        // which mean nothing without one, and under every row with "YES" (or "SLASHES", the old
+        // way to write "YES" with %SHOW_SLASHES="YES"). Otherwise ("AUTO", the default, and "NO")
+        // there is none, and written rhythm goes in the bar.
+        const no_staff = !(show_staff == "YES" || show_staff == "SLASHES") && !pitches_detected;
         // Without a staff the row stays a plain row (barlines, time signature, simile marks and bare
         // rests in the bar row). A bar's written rhythm is drawn in the bar, without a staff, and
         // that bar's chord names go above it; so does a chord in a bar with a simile mark.

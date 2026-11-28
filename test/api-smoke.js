@@ -408,9 +408,9 @@ async function run() {
     const fine = await gapAboveChords("%SHOW_STAFF=\"YES\"\n| C | F:2. A:8 B:8 <Fine> ||", "Fine");
     assert.equal(fine.gap, chordsOnly.gap, "Fine sits above the chords in a staff row too");
 
-    // Without a staff (%SHOW_STAFF="NO", the default) a bar's written rhythm is
+    // Without a staff (%SHOW_STAFF="AUTO", the default; "NO" is the same) a bar's written rhythm is
     // drawn in the bar and its chord names go above. The row keeps a plain row's barlines and is
-    // shorter than a staff row. "YES" draws the staff; "AUTO" draws it under rows with rhythm.
+    // shorter than a staff row. "YES" draws the staff.
     const drawn = async (code) => {
       const [page] = await esm.renderToDrawings(esm.parse(code).track, { paper_height: 0 });
       return page;
@@ -424,10 +424,10 @@ async function run() {
     const rhythm = "| C | F | G | D:4. A:8~ :2 ||";
     const staffPage = await drawn(`%SHOW_STAFF="YES"\n${rhythm}`);
     const rhythmPage = await drawn(rhythm);
-    assert.deepEqual((await drawn(`%SHOW_STAFF="NO"\n${rhythm}`)).commands, rhythmPage.commands, "NO is the default");
-    assert.deepEqual((await drawn(`%SHOW_STAFF="AUTO"\n${rhythm}`)).commands, staffPage.commands, "AUTO draws a staff under a row with rhythm");
+    assert.deepEqual((await drawn(`%SHOW_STAFF="NO"\n${rhythm}`)).commands, rhythmPage.commands, "NO draws as the default");
+    assert.deepEqual((await drawn(`%SHOW_STAFF="AUTO"\n${rhythm}`)).commands, rhythmPage.commands, "AUTO is the default: no staff under a row with rhythm");
     const plainPage = await drawn("| C | F | G | D A ||");
-    assert.deepEqual((await drawn(`%SHOW_STAFF="AUTO"\n| C | F | G | D A ||`)).commands, plainPage.commands, "AUTO draws no staff under a row without rhythm");
+    assert.deepEqual((await drawn(`%SHOW_STAFF="AUTO"\n| C | F | G | D A ||`)).commands, plainPage.commands, "AUTO draws a row without rhythm as a plain row");
     assert.ok(rhythmPage.height < staffPage.height, "A row with rhythm and no staff is shorter than a staff row");
     assert.ok(rhythmPage.height > plainPage.height, "A row with rhythm and no staff is taller than a plain row");
     assert.equal(
@@ -443,6 +443,7 @@ async function run() {
     const pitched = "| C | C:((C3,E3,G3):4) :((D3,F#3):4) F:((A3):2) | G | D ||";
     assert.equal(staffLines(await drawn(pitched)), 5, "A row with pitched notes is drawn on a staff by default");
     assert.equal(staffLines(await drawn(`%SHOW_STAFF="NO"\n${pitched}`)), 5, "and under SHOW_STAFF=NO");
+    assert.equal(staffLines(await drawn(`%SHOW_STAFF="AUTO"\n${pitched}`)), 5, "and under SHOW_STAFF=AUTO");
     assert.equal(staffLines(await drawn(`${pitched}\n| C | F:4. G:8~ :2 | G | D ||`)), 5, "A row of plain rhythm after it still has no staff");
 
     // Beat slashes are their own switch, with or without a staff.
