@@ -1567,9 +1567,14 @@ export class DefaultRenderer extends Renderer {
         if (show_staff == "NO") {
             yprof.rs.detected = false;
         }
-        // "LINE": a row with written rhythm stays a plain row (barlines, time signature and bare
-        // rests in the chord row), with its rhythm on one line underneath.
-        yprof.line = show_staff == "LINE" && !!yprof.rs.detected;
+        // "STEMS" and "LINE": a row with written rhythm stays a plain row (barlines, time signature
+        // and bare rests in the chord row), with its rhythm underneath: on one thin line ("LINE"),
+        // or on nothing, only a whole or half rest keeping a short piece of line ("STEMS").
+        yprof.line = (show_staff == "LINE" || show_staff == "STEMS") && !!yprof.rs.detected;
+        yprof.line_drawn = yprof.line && show_staff == "LINE";
+        // Under "STEMS" a whole or half rest has its short line wherever it is drawn, in the chord
+        // row too (a whole rest with the bar to itself, a rest in a row without rhythm).
+        yprof.rest_lines = show_staff == "STEMS";
         yprof.staff_frame = !!yprof.rs.detected && !yprof.line;
         if (yprof.line) {
             yprof.rs.height = param.rs_line_room_above + param.rs_line_stem_length + param.rs_line_room_below;
@@ -1794,7 +1799,7 @@ export class DefaultRenderer extends Renderer {
         let num_flexible_rooms = 0;
 
         // Read by the rhythm drawing (renderer_legacy): heads and rests made for a single line.
-        this.rs_single_line = !!yprof.line;
+        this.rs_single_line = yprof.line ? (yprof.line_drawn ? "line" : "stems") : false;
 
         /**
          * Explanation for scaling policy
@@ -2058,7 +2063,8 @@ export class DefaultRenderer extends Renderer {
                             "l",
                             yprof.staff_frame ? param.rs_area_height : param.row_height,
                             yprof.staff_frame ? param.rs_area_height : param.base_body_height,
-                            param
+                            param,
+                            yprof.rest_lines ? "ledger" : false
                         );
                         if (draw && e.exceptinal_comment) {
                             let r = this.renderChordComment(paper, x / draw_scale, yprof.mu.y + yprof.mu.height, e.exceptinal_comment.comment, param);
@@ -2614,7 +2620,8 @@ export class DefaultRenderer extends Renderer {
                         "c",
                         yprof.staff_frame ? param.rs_area_height : param.row_height,
                         yprof.staff_frame ? param.rs_area_height : param.base_body_height,
-                        param
+                        param,
+                        yprof.rest_lines ? "ledger" : false
                     );
                     this.hitManager.add(paper, cr.bb, e);
                     if (e.exceptinal_comment) {
@@ -2693,7 +2700,9 @@ export class DefaultRenderer extends Renderer {
         } // measure loop
 
         // 0. Draw 5 lines, or the single line
-        if(yprof.line){
+        if(yprof.line && !yprof.line_drawn){
+            // "STEMS": no line.
+        }else if(yprof.line){
             // Only under the bars that have written rhythm; the other bars stay as on a plain row.
             let line_y = yprof.rs.y + param.rs_line_room_above;
             row_elements_list.forEach((m) => {
@@ -2891,7 +2900,7 @@ export class DefaultRenderer extends Renderer {
         var yoffsets = {
             // On a staff a whole rest hangs from the line above the middle one. On a single line it
             // hangs from that line, as a half rest sits on it.
-            1: on_single_line ? 0.5 : -_5i - 0.5, // 0.5 is subpixel adjustment
+            1: (on_single_line && on_single_line !== "ledger") ? 0.5 : -_5i - 0.5, // 0.5 is subpixel adjustment
             2: (-_5i / 6) * 4 + 0.5,
             4: -_5i * 1.5,
             8: -_5i + 0.5,
@@ -2959,6 +2968,13 @@ export class DefaultRenderer extends Renderer {
         else if(align == "r") x -= w;
 
         if(draw){            
+            if ((on_single_line === "stems" || on_single_line === "ledger") && rd <= 2) {
+                // With no line under the rhythm, a whole and a half rest keep a short piece of it
+                // (as a ledger line): the whole rest hangs from it, the half rest sits on it.
+                let ly = y_body_or_rs_base + row_height / 2 + oy - 0.5 + (rd == 2 ? heights[rd] : 0);
+                let over = (img.width / s) * 0.45;
+                graphic.canvasLine(paper, x - over, ly, x + img.width / s + over, ly, { width: 1 });
+            }
             if (rd <= 4) {
                 ctx.drawImage(
                     img,

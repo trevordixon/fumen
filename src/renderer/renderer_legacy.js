@@ -740,7 +740,7 @@ export class Renderer {
                 row_height,
                 row_height,
                 param,
-                !!this.rs_single_line
+                this.rs_single_line || false
             );
 
             bounding_box.add_BB(r.bb);
