@@ -1514,6 +1514,7 @@ export class DefaultRenderer extends Renderer {
         // Screening of y-axis areas
         let rg_mark_detected = false;
         let fixed_mu_elem_detected = false;
+        let pitches_detected = false; // written notes with pitches, which only a staff can show
         for (let ml = 0; ml < row_elements_list.length; ++ml) {
             var m = row_elements_list[ml];
             if(m.renderprop && 
@@ -1548,6 +1549,7 @@ export class DefaultRenderer extends Renderer {
                         (e.times != null && (e.ntimes || e.times != 2));
                 } else if (e instanceof common.Chord) {
                     yprof.rs.detected |= e.note_group_list !== null;
+                    if (e.note_group_list !== null && e.note_group_list.some((ng) => ng.note_profiles)) pitches_detected = true;
                     if(e.exceptinal_comment && !e.isSyncopatedSource() ){
                         yprof.mu.detected = true;
                         fixed_mu_elem_detected = true;
@@ -1571,7 +1573,8 @@ export class DefaultRenderer extends Renderer {
         }
         // A staff is drawn only where it is asked for: "YES" (every row), "SLASHES", and "AUTO"
         // (each row with written rhythm). "NO", the default, draws none: rhythm goes in the bar.
-        const no_staff = !(show_staff == "YES" || show_staff == "SLASHES" || show_staff == "AUTO");
+        // A row with pitched notes gets its staff whatever the setting: they mean nothing without one.
+        const no_staff = !(show_staff == "YES" || show_staff == "SLASHES" || show_staff == "AUTO") && !pitches_detected;
         // Without a staff the row stays a plain row (barlines, time signature, simile marks and bare
         // rests in the bar row). A bar's written rhythm is drawn in the bar, without a staff, and
         // that bar's chord names go above it; so does a chord in a bar with a simile mark.
