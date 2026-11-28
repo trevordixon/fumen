@@ -401,15 +401,16 @@ async function run() {
       assert.ok(direction && chord, `Expected ${mark} and the chord B to be drawn for ${code}`);
       return { gap: chord.y - direction.y, chordSize: parseFloat(chord.font) };
     };
-    const withStaff = await gapAboveChords("| C | Dm7b5:2. <:8 Ab:8 Bb:8 <D.S. al Coda> ||", "D.S. al Coda");
+    const withStaff = await gapAboveChords("%SHOW_STAFF=\"YES\"\n| C | Dm7b5:2. <:8 Ab:8 Bb:8 <D.S. al Coda> ||", "D.S. al Coda");
     const chordsOnly = await gapAboveChords("| C | Dm7b5 Ab Bb <D.S. al Coda> ||", "D.S. al Coda");
     assert.equal(withStaff.gap, chordsOnly.gap, "A direction sits as far above the chords with a staff as without");
     assert.ok(withStaff.gap >= withStaff.chordSize / 2, "A direction in a staff row is drawn above the chord row, not in it");
-    const fine = await gapAboveChords("| C | F:2. A:8 B:8 <Fine> ||", "Fine");
+    const fine = await gapAboveChords("%SHOW_STAFF=\"YES\"\n| C | F:2. A:8 B:8 <Fine> ||", "Fine");
     assert.equal(fine.gap, chordsOnly.gap, "Fine sits above the chords in a staff row too");
 
-    // %SHOW_STAFF="RHYTHM": a bar's written rhythm is drawn in the bar, without a staff, and its
-    // chord names go above. The row keeps a plain row's barlines and is shorter than a staff row.
+    // Without a staff (%SHOW_STAFF="NO", the default; "AUTO" is the same) a bar's written rhythm is
+    // drawn in the bar and its chord names go above. The row keeps a plain row's barlines and is
+    // shorter than a staff row. "YES" draws the staff.
     const drawn = async (code) => {
       const [page] = await esm.renderToDrawings(esm.parse(code).track, { paper_height: 0 });
       return page;
@@ -421,26 +422,35 @@ async function run() {
       .map((m) => ({ x: +m[1], y: +m[2], length: Math.abs(vertical ? m[4] - m[2] : m[3] - m[1]) }));
     const chordY = (page, name) => page.commands.find((c) => c.op === "text" && c.text === name).y;
     const rhythm = "| C | F | G | D:4. A:8~ :2 ||";
-    const staffPage = await drawn(rhythm);
-    const rhythmPage = await drawn(`%SHOW_STAFF="RHYTHM"\n${rhythm}`);
+    const staffPage = await drawn(`%SHOW_STAFF="YES"\n${rhythm}`);
+    const rhythmPage = await drawn(rhythm);
+    assert.deepEqual((await drawn(`%SHOW_STAFF="NO"\n${rhythm}`)).commands, rhythmPage.commands, "NO is the default");
+    assert.deepEqual((await drawn(`%SHOW_STAFF="AUTO"\n${rhythm}`)).commands, rhythmPage.commands, "AUTO draws as NO");
     const plainPage = await drawn("| C | F | G | D A ||");
-    assert.ok(rhythmPage.height < staffPage.height, "A RHYTHM row is shorter than a staff row");
-    assert.ok(rhythmPage.height > plainPage.height, "A RHYTHM row is taller than a plain row");
+    assert.ok(rhythmPage.height < staffPage.height, "A row with rhythm and no staff is shorter than a staff row");
+    assert.ok(rhythmPage.height > plainPage.height, "A row with rhythm and no staff is taller than a plain row");
     assert.equal(
       Math.max(...lines(rhythmPage, true).slice(0, 3).map((l) => l.length)),
       Math.max(...lines(plainPage, true).slice(0, 3).map((l) => l.length)),
-      "Barlines on a RHYTHM row are as tall as on a plain row"
+      "Barlines on a row with rhythm and no staff are as tall as on a plain row"
     );
-    assert.equal(lines(rhythmPage, false).filter((l) => l.length > 100).length, 0, "RHYTHM draws no staff lines");
-    assert.ok(lines(staffPage, false).filter((l) => l.length > 100).length >= 5, "The automatic style still draws its staff");
+    assert.equal(lines(rhythmPage, false).filter((l) => l.length > 100).length, 0, "No staff lines are drawn by default");
+    assert.ok(lines(staffPage, false).filter((l) => l.length > 100).length >= 5, "YES draws the staff");
     assert.ok(chordY(rhythmPage, "D") < chordY(rhythmPage, "C"), "Chord names of a bar with rhythm sit above those of a plain bar");
-    const similePage = await drawn(`%SHOW_STAFF="RHYTHM"\n| C | F ./. | G | D ||`);
-    assert.ok(chordY(similePage, "F") < chordY(similePage, "C"), "A chord in a bar with a simile mark is lifted too");
+    // Beat slashes are their own switch, with or without a staff.
+    const slashHeads = (page) => page.commands.filter((c) => c.op === "path" && c.style && c.style.fill && c.style.fill !== "white").length;
+    const slashedNoStaff = await drawn(`%SHOW_SLASHES="YES"\n| C | F | G | D A ||`);
+    assert.ok(slashHeads(slashedNoStaff) >= slashHeads(plainPage) + 16, "SHOW_SLASHES draws a slash on each beat without a staff");
+    assert.equal(lines(slashedNoStaff, false).filter((l) => l.length > 100).length, 0, "SHOW_SLASHES alone draws no staff");
+    const slashedStaff = await drawn(`%SHOW_STAFF="SLASHES"\n| C | F | G | D A ||`);
+    assert.ok(lines(slashedStaff, false).filter((l) => l.length > 100).length >= 5, "SHOW_STAFF=SLASHES still draws a staff with its slashes");
     assert.deepEqual(
-      (await drawn(`%SHOW_STAFF="RHYTHM"\n| C | F | G | D A ||`)).commands,
-      plainPage.commands,
-      "A row without written rhythm or a simile mark draws as a plain row under RHYTHM"
+      (await drawn(`%SHOW_STAFF="YES"\n%SHOW_SLASHES="YES"\n| C | F | G | D A ||`)).commands,
+      slashedStaff.commands,
+      "A staff with SHOW_SLASHES draws as SHOW_STAFF=SLASHES"
     );
+    const similePage = await drawn(`| C | F ./. | G | D ||`);
+    assert.ok(chordY(similePage, "F") < chordY(similePage, "C"), "A chord in a bar with a simile mark is lifted too");
     esm.setTextMeasurer(null);
   }
 

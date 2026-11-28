@@ -1329,7 +1329,7 @@ export class Renderer {
             let barlen_delta = Math.max(0, (numflag-2) * flagBarLengthDeltaStep);
             let flag_w = _5lines_intv * flagWidthScale;
             let url = "flag_"+(upper_flag?"f":"i")+numflag; // for now numflags <= 4
-            // Without a staff (%SHOW_STAFF="RHYTHM") stems are shorter, and a flag at the staff's
+            // Without a staff (%SHOW_STAFF="NO", the default) stems are shorter, and a flag at the staff's
             // size is taller than its stem and runs up over the notehead. A flagged note's stem
             // is a little longer there, and its flag is kept below the head.
             if (param.rhythm_without_staff) {

@@ -860,8 +860,9 @@ export class Parser {
     }
 
     /**
-     * Beat slashes: under %SHOW_STAFF="SLASHES", a bar whose chords have no lengths is drawn as a
-     * staff with one plain slash (no stem) on each beat, each chord over the beat it comes in on.
+     * Beat slashes: under %SHOW_SLASHES="YES", a bar whose chords have no lengths is drawn with
+     * one plain slash (no stem) on each beat, each chord over the beat it comes in on. With or
+     * without a staff: that is %SHOW_STAFF's. %SHOW_STAFF="SLASHES" is both, a staff and slashes.
      * It says "this many beats, play as you like", where written lengths say "play this rhythm".
      *
      * The slashes are drawn only, never written back (impliedFill), and a chord keeps what was
@@ -878,7 +879,7 @@ export class Parser {
             for (const e of measure.childNodes) {
                 if (e instanceof common.Time) { numer = Number(e.numer) || numer; denom = Number(e.denom) || denom; }
             }
-            if (measure.getVariable("SHOW_STAFF") !== "SLASHES") return;
+            if (measure.getVariable("SHOW_STAFF") !== "SLASHES" && measure.getVariable("SHOW_SLASHES") !== "YES") return;
             const children = measure.childNodes;
             if (children.some((e) => e instanceof common.Rest || e instanceof common.Simile || e instanceof common.LongRest || e instanceof common.Syncopation)) return;
             // The two bars the two-bar repeat sign (./|/.) is drawn across are that sign's.

@@ -91,7 +91,7 @@ var SR_RENDER_PARAM = {
     row_margin          : 4, // Margin between next y_base and lower edge of Measure Lower Area
     section_margin_top  : 0, // Additional gap before rows that start a new block
     rs_area_height      : 24, // Rhythm Slashes Area // 
-    // %SHOW_STAFF="RHYTHM": a bar's written rhythm is drawn in the bar itself, with no staff, and
+    // Without a staff (%SHOW_STAFF="NO", the default) a bar's written rhythm is drawn in the bar itself, and
     // that bar's chord names go above it. The names go up a little and the rhythm down a little,
     // so the two together sit about centred on the barlines.
     rhythm_chord_lift    : 13, // How far above their plain-row place those chord names sit
@@ -1569,17 +1569,17 @@ export class DefaultRenderer extends Renderer {
                 }
             }
         }
-        if (show_staff == "NO") {
-            yprof.rs.detected = false;
-        }
-        // "RHYTHM": the row stays a plain row (barlines, time signature, simile marks and bare
+        // A staff is drawn only where it is asked for: "YES" (every row) and "SLASHES". Anything
+        // else ("NO", the default; "AUTO") draws none, and written rhythm goes in the bar.
+        const no_staff = !(show_staff == "YES" || show_staff == "SLASHES");
+        // Without a staff the row stays a plain row (barlines, time signature, simile marks and bare
         // rests in the bar row). A bar's written rhythm is drawn in the bar, without a staff, and
         // that bar's chord names go above it; so does a chord in a bar with a simile mark.
         const chord_with_simile = row_elements_list.some((m) =>
             m.childNodes.some((e) => e instanceof common.Simile) &&
             m.childNodes.some((e) => e instanceof common.Chord));
-        yprof.rhythm_in_bar = show_staff == "RHYTHM" && !!yprof.rs.detected;
-        yprof.chords_lifted = show_staff == "RHYTHM" && (!!yprof.rs.detected || chord_with_simile);
+        yprof.rhythm_in_bar = no_staff && !!yprof.rs.detected;
+        yprof.chords_lifted = no_staff && (!!yprof.rs.detected || chord_with_simile);
         // Barlines and what goes with them are drawn on the staff only when there is one.
         yprof.staff_frame = !!yprof.rs.detected && !yprof.rhythm_in_bar;
         if (yprof.chords_lifted) {
