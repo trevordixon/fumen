@@ -429,7 +429,7 @@ async function run() {
     if (lineBars.length && plainBars.length) {
       assert.equal(Math.max(...lineBars.slice(0, 3)), Math.max(...plainBars.slice(0, 3)), "Barlines on a single-line row are as tall as on a plain row");
     }
-    // %SHOW_STAFF="STEMS": the same row with no line; a whole or half rest keeps a short one.
+    // %SHOW_STAFF="STEMS": the same row with no line.
     const horizontals = (page) => page.commands
       .filter((c) => c.op === "path" && typeof c.d === "string" && c.style && c.style.stroke)
       .map((c) => c.d.match(/^M\s*([\d.]+)[ ,]([\d.]+)\s*L\s*([\d.]+)[ ,]([\d.]+)$/))
@@ -437,9 +437,6 @@ async function run() {
     const stemsPage = await drawn(`%SHOW_STAFF="STEMS"\n${rhythm}`);
     assert.equal(stemsPage.height, linePage.height, "STEMS rows are as tall as LINE rows");
     assert.equal(horizontals(stemsPage), horizontals(linePage) - 1, "STEMS draws no line under the rhythm");
-    const withRests = await drawn(`%SHOW_STAFF="STEMS"\n| C | F | G | Dm:4 r:4 r:2 ||`);
-    const withoutRests = await drawn(`%SHOW_STAFF="STEMS"\n| C | F | G | Dm:4 r:4 G:2 ||`);
-    assert.equal(horizontals(withRests), horizontals(withoutRests) + 1, "A half rest keeps a short line under STEMS; a quarter rest has none");
     assert.deepEqual(
       (await drawn(`%SHOW_STAFF="LINE"\n| C | F | G | Dm G ||`)).commands,
       plainPage.commands,

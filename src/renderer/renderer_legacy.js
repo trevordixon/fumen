@@ -1332,6 +1332,20 @@ export class Renderer {
             let barlen_delta = Math.max(0, (numflag-2) * flagBarLengthDeltaStep);
             let flag_w = _5lines_intv * flagWidthScale;
             let url = "flag_"+(upper_flag?"f":"i")+numflag; // for now numflags <= 4
+            // With the shorter stems of "LINE" and "STEMS", a flag at the staff's size is taller
+            // than its stem and runs up over the notehead. A flagged note's stem is a little
+            // longer there, and its flag is kept below the head.
+            if (this.rs_single_line) {
+                const extra = 4;
+                let head_y = Math.max.apply(null, elements[0].balken_element.notes_coord.y);
+                graphic.canvasLine(paper, bar_x,
+                    head_y + param.note_bar_length + barlen_delta, bar_x,
+                    head_y + param.note_bar_length + barlen_delta + extra, {width:1}, true);
+                barlen_delta += extra;
+                let flag_img = this.getMusicGlyph(url);
+                let room = param.note_bar_length + barlen_delta - _5lines_intv;
+                if (flag_img && flag_img.height > 0) flag_w = Math.min(flag_w, room * flag_img.width / flag_img.height);
+            }
 
             let ys = elements[0].balken_element.notes_coord.y;
             let xs = elements[0].balken_element.notes_coord.x;
