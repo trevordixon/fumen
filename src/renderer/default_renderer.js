@@ -113,7 +113,7 @@ var SR_RENDER_PARAM = {
     xtimes_mark_y_margin: 2, // Margin between body/RS are and "(x times)" mark.
 
     // Horizontal settings
-    header_body_margin  : 2, // Margin between header and body (x-direction)
+    header_body_margin  : 5, // Margin between header and body (x-direction): room after the barline
     body_footer_margin  : 2, // Margin between body and footer (x-direction)
 
     // Chord settings
